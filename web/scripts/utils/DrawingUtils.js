@@ -16,7 +16,9 @@ export function relativeScreenBearing(dx, dy) {
     return (deg + 360) % 360;
 }
 
-const COMPASS_LABELS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+// French-style hyphenated abbreviations (N-E, S-O, ...) to match the in-game UI's own compass
+// labels - same screen-relative bearing underneath, just a different label format.
+const COMPASS_LABELS = ['N', 'N-E', 'E', 'S-E', 'S', 'S-O', 'O', 'N-O'];
 
 export function bearingToCompassLabel(bearingDeg) {
     const index = Math.round(bearingDeg / 45) % 8;

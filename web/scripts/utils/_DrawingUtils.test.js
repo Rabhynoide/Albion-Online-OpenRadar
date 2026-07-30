@@ -318,7 +318,7 @@ describe('relativeScreenBearing / bearingToCompassLabel', () => {
     test('a target directly on +X (raw) renders up-left on screen -> NW', () => {
         const bearing = relativeScreenBearing(1, 0);
         expect(bearing).toBeCloseTo(315, 0);
-        expect(bearingToCompassLabel(bearing)).toBe('NW');
+        expect(bearingToCompassLabel(bearing)).toBe('N-O');
     });
 
     // @verified 2026-05-01: a target at raw (0, +dy) renders up-and-right on screen per
@@ -326,21 +326,21 @@ describe('relativeScreenBearing / bearingToCompassLabel', () => {
     test('a target directly on +Y (raw) renders up-right on screen -> NE', () => {
         const bearing = relativeScreenBearing(0, 1);
         expect(bearing).toBeCloseTo(45, 0);
-        expect(bearingToCompassLabel(bearing)).toBe('NE');
+        expect(bearingToCompassLabel(bearing)).toBe('N-E');
     });
 
     // @verified 2026-05-01: opposite of the +X case -> down-right on screen -> SE.
     test('a target directly on -X (raw) renders down-right on screen -> SE', () => {
         const bearing = relativeScreenBearing(-1, 0);
         expect(bearing).toBeCloseTo(135, 0);
-        expect(bearingToCompassLabel(bearing)).toBe('SE');
+        expect(bearingToCompassLabel(bearing)).toBe('S-E');
     });
 
     // @verified 2026-05-01: opposite of the +Y case -> down-left on screen -> SW.
     test('a target directly on -Y (raw) renders down-left on screen -> SW', () => {
         const bearing = relativeScreenBearing(0, -1);
         expect(bearing).toBeCloseTo(225, 0);
-        expect(bearingToCompassLabel(bearing)).toBe('SW');
+        expect(bearingToCompassLabel(bearing)).toBe('S-O');
     });
 
     // @verified 2026-05-01: same position as the player has no defined direction; atan2(0,0)=0 -> N
@@ -353,11 +353,11 @@ describe('relativeScreenBearing / bearingToCompassLabel', () => {
     test('bearingToCompassLabel covers all 8 sectors (each 45deg wide, centered on its label)', () => {
         expect(bearingToCompassLabel(0)).toBe('N');
         expect(bearingToCompassLabel(22)).toBe('N');
-        expect(bearingToCompassLabel(23)).toBe('NE');
-        expect(bearingToCompassLabel(45)).toBe('NE');
+        expect(bearingToCompassLabel(23)).toBe('N-E');
+        expect(bearingToCompassLabel(45)).toBe('N-E');
         expect(bearingToCompassLabel(90)).toBe('E');
         expect(bearingToCompassLabel(180)).toBe('S');
-        expect(bearingToCompassLabel(270)).toBe('W');
+        expect(bearingToCompassLabel(270)).toBe('O');
         expect(bearingToCompassLabel(359)).toBe('N');
     });
 });
