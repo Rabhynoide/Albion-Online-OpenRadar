@@ -108,6 +108,15 @@ Common targets:
 | `make release` | create a draft GitHub release (requires `TAG=x.y.z`) |
 | `make clean` | remove build artifacts |
 
+### CI-built dev artifacts
+
+Every push to `main` (not PRs) runs `.github/workflows/ci.yml`'s `build` job after lint+test
+pass: `make all-in-one` with `VERSION=dev-<short-sha>`, uploaded as a workflow artifact named
+`dev-build-<sha>` (14-day retention, downloadable from the Actions run page). No tag, no
+GitHub Release - that's still `.github/workflows/release.yml`, triggered only by pushing a
+version tag (or `workflow_dispatch`). Use dev-build artifacts to hand someone a binary from the
+latest `main` without cutting a real release.
+
 ### Asset embedding
 
 `embed_prod.go` (repo root, `package assets`) wires the frontend and SSR templates into the
