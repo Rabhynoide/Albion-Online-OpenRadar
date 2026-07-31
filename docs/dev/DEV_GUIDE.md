@@ -15,23 +15,33 @@ OpenRadar is a single-binary Go application that:
 
 ### Project structure
 
+OpenRadar's repo is a **monorepo**: `cmd/radar` is the shipped client (everything below),
+`cmd/hub` reserves the location for a planned shared backend service (see
+[`cmd/hub/README.md`](../../cmd/hub/README.md)) — not implemented yet, but already sharing
+this one Go module so it can freely import `internal/...` packages once it exists.
+
 ```
 OpenRadar/
-├── cmd/radar/                # Entry point, App struct, TUI dashboard wiring
+├── cmd/
+│   ├── radar/                # Client entry point, App struct, TUI dashboard wiring
+│   └── hub/                  # (planned) shared backend service - see cmd/hub/README.md
 ├── internal/
-│   ├── capture/              # Multi-interface manager + libpcap workers
-│   ├── photon/               # Protocol18 deserializer, event codes, fixtures
-│   ├── server/               # HTTP routes, WebSocket handler, settings APIs
-│   ├── ui/                   # Bubble Tea TUI dashboard
-│   └── logger/               # JSONL structured logging
-├── web/                      # Frontend (embedded at build)
-│   ├── scripts/              # JavaScript modules (handlers, drawings, utils)
-│   ├── images/               # Maps, items, spells icons
-│   ├── public/               # HTML, fonts
-│   └── ao-bin-dumps/         # Game data, minified
-├── tools/                    # Node.js utilities (asset refresh, generators)
+│   ├── capture/               # Multi-interface manager + libpcap workers
+│   ├── photon/                # Protocol18 deserializer, event codes, fixtures
+│   ├── roads/                 # Local per-user Avalon Road discovery persistence (roads.json)
+│   ├── server/                # HTTP routes, WebSocket handler, settings/network/roads APIs
+│   ├── templates/             # Go html/template pages + layouts (SSR, embedded)
+│   ├── ui/                    # Bubble Tea TUI dashboard
+│   └── logger/                # JSONL structured logging
+├── web/                       # Frontend (embedded at build)
+│   ├── scripts/               # JavaScript modules (handlers, drawings, utils)
+│   ├── images/                # Maps, items, spells icons
+│   ├── styles/                # Tailwind input/output, bundled fonts
+│   └── ao-bin-dumps/          # Game data, minified
+├── tools/                    # Node.js + Go utilities (asset refresh, generators, pcap tools)
 ├── e2e/                      # Playwright regression suite
-├── embed.go                  # //go:embed directives
+├── embed_prod.go             # //go:embed directives (production build)
+├── embed_dev.go              # Same vars, empty - dev mode reads from disk instead
 └── Makefile
 ```
 
@@ -100,23 +110,33 @@ Common targets:
 
 ### Asset embedding
 
-`embed.go` wires the frontend into the Go binary:
+`embed_prod.go` (repo root, `package assets`) wires the frontend and SSR templates into the
+Go binary:
 
 ```go
-//go:embed web/scripts
-var Scripts embed.FS
-
-//go:embed web/images
+//go:embed all:web/images
 var Images embed.FS
 
-//go:embed web/public
-var Public embed.FS
+//go:embed web/scripts        // no `all:` - excludes _*.test.js and __fixtures__/
+var Scripts embed.FS
 
-//go:embed web/sounds
+//go:embed all:web/ao-bin-dumps
+var Data embed.FS
+
+//go:embed all:web/sounds
 var Sounds embed.FS
+
+//go:embed all:web/styles
+var Styles embed.FS
+
+//go:embed all:internal/templates
+var Templates embed.FS
 ```
 
-`embed_prod.go` is the production embed; `embed_dev.go` reads from disk when `-dev` is passed. The CI guard in `.github/workflows/ci.yml` rejects unprefixed `*.test.js` so the production binary cannot ship test artifacts. `embed_prod_test.go` walks the embed FS to confirm.
+`embed_dev.go` declares the same six vars empty (build-tag `dev`) so `-dev` mode reads
+straight from disk instead. The CI guard in `.github/workflows/ci.yml` rejects unprefixed
+`*.test.js` so the production binary cannot ship test artifacts. `embed_prod_test.go` walks
+the embed FS to confirm.
 
 ### Linux capability
 

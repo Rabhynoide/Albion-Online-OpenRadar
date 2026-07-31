@@ -30,6 +30,10 @@ browser.
 protocol, and displays everything on a web-based radar. No client modification, no memory injection. Just passive
 reading.
 
+This repo is also home to the planned **OpenRadar Hub** — a shared backend letting a group of
+radar users pool what they've discovered together (Avalon Road connections first). It's in
+early planning, not shipped yet — see [`cmd/hub/README.md`](cmd/hub/README.md).
+
 ---
 
 ## Quick Start

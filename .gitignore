@@ -99,8 +99,9 @@ HELPER PACKAGE/
 /.serena/project.yml
 /cmd/radar/resource.syso
 
-# Claude-specific files (local only, never commit)
-/CLAUDE.md
+# Claude-specific: shared project context (CLAUDE.md) IS committed - see the file itself.
+# Personal, uncommitted overrides/preferences go in CLAUDE.local.md instead.
+/CLAUDE.local.md
 
 # Local full-session Photon captures (never committed, always anonymized then split)
 captures/

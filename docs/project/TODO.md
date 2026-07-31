@@ -1,7 +1,7 @@
 # OpenRadar Roadmap
 
 **Version**: 2.2.0
-**Last update**: 2026-05-01
+**Last update**: 2026-07-30
 
 ## Detection systems status
 
@@ -15,6 +15,8 @@
 | Dungeons | working | per-type filters Solo, Group (Duo), Corrupted, Hellgate validated end to end. Per-enchant filters E0-E4 work across every family. Five group families unblocked by #78 (T6_MORGANA, T6_KEEPER, T6_UNDEAD, T5_PORTAL_ROYAL_SOLO, T6_PORTAL). Avalonian dungeons, per-difficulty filters, and a dungeons database stay open. |
 | Chests | basic | rarity persisted on entity (#75); drawing-layer color resolution and rarity source slot still open |
 | Fishing | working | issue #25 closed via #73 + #85. Event 61 (end-of-fishing) logged but not visualized. |
+| GPS / Avalon Roads | working | static open-world graph from `cluster/world.json`, road discovery by play, 24h staleness confirmed from game data (see `docs/technical/AVALON_ROADS_GPS.md`). Per-instance road duration still unobservable; a shared multi-user roads database is planned via `cmd/hub` (not started). |
+| Local Treasures | working | buried chests, temporary resources, smuggler piles, timed events via `LocalTreasuresUpdate` (event 285); `SPECIAL_EVENT_*` excluded as mob-detection duplicates. Single shared icon in v1, no per-type icons or countdown yet. |
 
 ## v2.3 backlog
 
