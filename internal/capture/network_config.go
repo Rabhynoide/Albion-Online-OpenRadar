@@ -23,9 +23,18 @@ type LoggingConfig struct {
 	PcapRecording     bool `json:"pcapRecording"`
 }
 
+// HubConfig points this radar client at a self-hosted OpenRadar Hub instance for
+// sharing discovered Avalonian Road edges with a group. See internal/hub.
+type HubConfig struct {
+	Enabled bool   `json:"enabled"`
+	URL     string `json:"url"`
+	Secret  string `json:"secret"`
+}
+
 type Config struct {
 	CaptureInterfaces []PersistedInterface `json:"captureInterfaces"`
 	Logging           LoggingConfig        `json:"logging"`
+	Hub               HubConfig            `json:"hub"`
 }
 
 func ReadConfig(appDir string) (Config, error) {

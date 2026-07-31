@@ -30,6 +30,11 @@ browser.
 protocol, and displays everything on a web-based radar. No client modification, no memory injection. Just passive
 reading.
 
+This repo is also home to the **OpenRadar Hub** — a small self-hostable service letting a
+group of radar users pool discovered Avalon Road connections into one shared database instead
+of everyone rediscovering the same roads. Optional and self-hosted (Docker), one Hub per
+friend group — see [`cmd/hub/README.md`](cmd/hub/README.md).
+
 ---
 
 ## Quick Start
