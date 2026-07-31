@@ -18,18 +18,24 @@ import (
 const shutdownTimeout = 10 * time.Second
 
 func main() {
+	os.Exit(run())
+}
+
+// run holds every defer that must fire before the process exits; main() only calls
+// os.Exit with its result, so os.Exit never skips a deferred cleanup.
+func run() int {
 	port := envOr("PORT", "8090")
 	dbPath := envOr("DB_PATH", "/data/hub.db")
 	secret := os.Getenv("HUB_SECRET")
 	if secret == "" {
 		fmt.Println("HUB_SECRET is required (refusing to start unauthenticated)")
-		os.Exit(1)
+		return 1
 	}
 
 	store, err := hub.OpenStore(dbPath)
 	if err != nil {
 		fmt.Printf("Failed to open store at %s: %v\n", dbPath, err)
-		os.Exit(1)
+		return 1
 	}
 	defer store.Close()
 
@@ -59,8 +65,9 @@ func main() {
 	fmt.Printf("OpenRadar Hub listening on :%s (db: %s)\n", port, dbPath)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Printf("Server error: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func envOr(key, fallback string) string {

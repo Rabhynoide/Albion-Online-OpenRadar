@@ -6,7 +6,7 @@ import (
 )
 
 // SecretHeader is the header clients must set to authenticate against the Hub.
-const SecretHeader = "X-Hub-Secret"
+const SecretHeader = "X-Hub-Secret" //nolint:gosec // a header name, not a credential value
 
 // requireSecret wraps h, rejecting requests whose SecretHeader doesn't match secret.
 // secret must be non-empty; callers should refuse to start the Hub otherwise.

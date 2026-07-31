@@ -42,7 +42,7 @@ func TestStoreRoundTrip(t *testing.T) {
 	if len(got.Edges) != 1 || got.Edges[0].From != "4206" || got.Edges[0].To != "TNL-001" {
 		t.Fatalf("round-trip mismatch: %+v", got.Edges)
 	}
-	if got.Edges[0].Pos == nil || (*got.Edges[0].Pos)[0] != 1.5 || (*got.Edges[0].Pos)[1] != -2.5 {
+	if got.Edges[0].Pos == nil || got.Edges[0].Pos[0] != 1.5 || got.Edges[0].Pos[1] != -2.5 {
 		t.Errorf("Pos not preserved: %+v", got.Edges[0].Pos)
 	}
 }
@@ -87,7 +87,7 @@ func TestAddEdgeUpsertsExisting(t *testing.T) {
 	if len(s.Edges) != 1 {
 		t.Fatalf("expected upsert to keep a single edge, got %d", len(s.Edges))
 	}
-	if s.Edges[0].Pos == nil || (*s.Edges[0].Pos)[0] != 5 {
+	if s.Edges[0].Pos == nil || s.Edges[0].Pos[0] != 5 {
 		t.Errorf("Pos not refreshed: %+v", s.Edges[0].Pos)
 	}
 	if !s.Edges[0].DiscoveredAt.After(first) {

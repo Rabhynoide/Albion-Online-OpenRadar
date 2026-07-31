@@ -31,9 +31,9 @@ type HTTPServer struct {
 	sounds  fs.FS
 	styles  fs.FS
 	// Template engine
-	tmpl        *templates.Engine
-	version     string
-	assetID     string
+	tmpl           *templates.Engine
+	version        string
+	assetID        string
 	devMode        bool
 	networkAPI     *NetworkAPI
 	settingsAPI    *SettingsAPI

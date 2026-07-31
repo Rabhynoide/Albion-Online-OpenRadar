@@ -22,7 +22,7 @@ func TestRoadsAPI_ListEmpty(t *testing.T) {
 	api := NewRoadsAPI(t.TempDir())
 	mux := newRoadsTestMux(api)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/roads/edges", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/roads/edges", http.NoBody)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -51,7 +51,7 @@ func TestRoadsAPI_PostThenGetReflectsEdge(t *testing.T) {
 		t.Fatalf("POST status %d, body=%s", rec.Code, rec.Body.String())
 	}
 
-	req2 := httptest.NewRequest(http.MethodGet, "/api/roads/edges", nil)
+	req2 := httptest.NewRequest(http.MethodGet, "/api/roads/edges", http.NoBody)
 	rec2 := httptest.NewRecorder()
 	mux.ServeHTTP(rec2, req2)
 	var got []map[string]any
@@ -110,7 +110,7 @@ func TestRoadsAPI_PostUpsertsExistingEdge(t *testing.T) {
 	req2 := httptest.NewRequest(http.MethodPost, "/api/roads/edges", bytes.NewReader(second))
 	mux.ServeHTTP(httptest.NewRecorder(), req2)
 
-	req3 := httptest.NewRequest(http.MethodGet, "/api/roads/edges", nil)
+	req3 := httptest.NewRequest(http.MethodGet, "/api/roads/edges", http.NoBody)
 	rec3 := httptest.NewRecorder()
 	mux.ServeHTTP(rec3, req3)
 	var got []map[string]any
@@ -126,7 +126,7 @@ func TestRoadsAPI_ListGETOnlyRejectsPOST(t *testing.T) {
 	api := NewRoadsAPI(t.TempDir())
 	mux := newRoadsTestMux(api)
 
-	req := httptest.NewRequest(http.MethodPut, "/api/roads/edges", nil)
+	req := httptest.NewRequest(http.MethodPut, "/api/roads/edges", http.NoBody)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
@@ -169,13 +169,15 @@ func TestRoadsAPI_ListPrefersHubWhenEnabled(t *testing.T) {
 		mustJSON(t, map[string]any{"from": "HUB-A", "to": "HUB-B"})))
 	hubReq.Header.Set(hub.SecretHeader, "secret")
 	hubReq.Header.Set("Content-Type", "application/json")
-	if _, err := http.DefaultClient.Do(hubReq); err != nil {
+	seedResp, err := http.DefaultClient.Do(hubReq)
+	if err != nil {
 		t.Fatalf("seed hub: %v", err)
 	}
+	seedResp.Body.Close()
 
 	api := NewRoadsAPI(dir)
 	mux := newRoadsTestMux(api)
-	req := httptest.NewRequest(http.MethodGet, "/api/roads/edges", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/roads/edges", http.NoBody)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -203,7 +205,7 @@ func TestRoadsAPI_ListFallsBackToLocalWhenHubUnreachable(t *testing.T) {
 	postReq := httptest.NewRequest(http.MethodPost, "/api/roads/edges", bytes.NewReader(addBody))
 	mux.ServeHTTP(httptest.NewRecorder(), postReq)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/roads/edges", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/roads/edges", http.NoBody)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -236,7 +238,7 @@ func TestRoadsAPI_PostForwardsToHub(t *testing.T) {
 	}
 
 	// Query the Hub directly to confirm the edge was forwarded.
-	hubReq, _ := http.NewRequest(http.MethodGet, hubSrv.URL+"/api/roads/edges", nil)
+	hubReq, _ := http.NewRequest(http.MethodGet, hubSrv.URL+"/api/roads/edges", http.NoBody)
 	hubReq.Header.Set(hub.SecretHeader, "secret")
 	resp, err := http.DefaultClient.Do(hubReq)
 	if err != nil {
@@ -275,7 +277,7 @@ func TestRoadsAPI_HubDisabledBehavesLikeToday(t *testing.T) {
 	api := NewRoadsAPI(dir)
 	mux := newRoadsTestMux(api)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/roads/edges", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/roads/edges", http.NoBody)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {

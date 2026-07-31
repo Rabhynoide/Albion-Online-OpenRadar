@@ -57,7 +57,7 @@ func (a *RoadsAPI) handleList(w http.ResponseWriter, _ *http.Request) {
 // fetchHubEdges tries the configured Hub, returning ok=false on any failure so the
 // caller can fall back to the local store instead of surfacing an error to the browser.
 func (a *RoadsAPI) fetchHubEdges(cfg capture.HubConfig) ([]roads.Edge, bool) {
-	req, err := http.NewRequest(http.MethodGet, cfg.URL+"/api/roads/edges", nil)
+	req, err := http.NewRequest(http.MethodGet, cfg.URL+"/api/roads/edges", http.NoBody)
 	if err != nil {
 		return nil, false
 	}

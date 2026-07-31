@@ -31,7 +31,7 @@ func authedRequest(method, path string, body []byte) *http.Request {
 	if body != nil {
 		r = httptest.NewRequest(method, path, bytes.NewReader(body))
 	} else {
-		r = httptest.NewRequest(method, path, nil)
+		r = httptest.NewRequest(method, path, http.NoBody)
 	}
 	r.Header.Set(SecretHeader, testSecret)
 	return r
@@ -39,7 +39,7 @@ func authedRequest(method, path string, body []byte) *http.Request {
 
 func TestAPI_HealthNoAuthRequired(t *testing.T) {
 	mux := newTestAPI(t)
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -49,7 +49,7 @@ func TestAPI_HealthNoAuthRequired(t *testing.T) {
 
 func TestAPI_ListWithoutSecretRejected(t *testing.T) {
 	mux := newTestAPI(t)
-	req := httptest.NewRequest(http.MethodGet, "/api/roads/edges", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/roads/edges", http.NoBody)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
@@ -59,7 +59,7 @@ func TestAPI_ListWithoutSecretRejected(t *testing.T) {
 
 func TestAPI_ListWithWrongSecretRejected(t *testing.T) {
 	mux := newTestAPI(t)
-	req := httptest.NewRequest(http.MethodGet, "/api/roads/edges", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/roads/edges", http.NoBody)
 	req.Header.Set(SecretHeader, "wrong")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
