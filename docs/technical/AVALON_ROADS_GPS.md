@@ -115,11 +115,29 @@ events found via the same event that motivated the ticks-format investigation ab
 `PROTOCOL18_PARAM_LAYOUTS.md`'s event 285 section for the wire layout and why
 `SPECIAL_EVENT_*` labels are excluded (they duplicate the existing mob detection).
 
-## Where this is going: the Hub
+## The Hub: shared roads across a group
 
-All of the above (`internal/roads`, `roads.json`, `ZoneGraph.js`) is **per-user, local-only**
-today. The planned `cmd/hub` service (see [`cmd/hub/README.md`](../../cmd/hub/README.md)) is
-meant to let a group of players pool discovered road edges into one shared, aggregated
-database instead of each person rediscovering the same roads independently. Not designed or
-started yet - the local system above is what it would evolve from, not replace outright (a
-single-user fallback probably still makes sense offline).
+Everything above (`internal/roads`, `roads.json`, `ZoneGraph.js`) works standalone,
+per-user, local-only. On top of that, `cmd/hub` (see
+[`cmd/hub/README.md`](../../cmd/hub/README.md)) is a small self-hostable service that lets a
+group of players pool discovered road edges into one shared database instead of each person
+rediscovering the same roads independently.
+
+**Architecture**: the browser's `GET`/`POST /api/roads/edges` calls never change. What changes
+is what the radar's own Go backend does with them (`internal/server/roads_api.go`), when a Hub
+is configured (`capture.Config.Hub`, persisted in `network.json`, set via Settings → Hub):
+- `POST`: writes to the local `roads.json` as always, then best-effort forwards the same edge
+  to the Hub. A Hub failure never fails the browser's request - the local write already
+  succeeded.
+- `GET`: tries the Hub first; on any failure (unreachable, timeout, non-200) falls back to the
+  local `roads.json`, exactly like today.
+
+This keeps the browser out of CORS/secret-management entirely (the Hub URL and shared secret
+never reach client-side JS or DevTools) and keeps `roads.json` working as an always-available
+offline cache even when the Hub is down.
+
+**The Hub itself** (`internal/hub`) is SQLite-backed (`modernc.org/sqlite`, pure Go, no CGO -
+keeps the Docker image tiny and static) and ships as a single container
+(`Dockerfile.hub`) - one Hub per friend group, each pointed at from Settings independently.
+Auth is a single shared secret (`X-Hub-Secret` header), not per-user accounts - "a group
+password," matching the scope of "friends sharing discoveries," not a public service.

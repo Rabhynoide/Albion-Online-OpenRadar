@@ -1,0 +1,20 @@
+# Runs the OpenRadar Hub. Copy this file, set HUB_SECRET (e.g. via a .env file
+# next to it: HUB_SECRET=your-group-secret), then `docker compose -f docker-compose.hub.yml up -d`.
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile.hub
+    image: openradar-hub
+    restart: unless-stopped
+    environment:
+      HUB_SECRET: ${HUB_SECRET:?set HUB_SECRET in the environment or a .env file}
+      PORT: 8090
+      DB_PATH: /data/hub.db
+    volumes:
+      - hub-data:/data
+    ports:
+      - "8090:8090"
+
+volumes:
+  hub-data:

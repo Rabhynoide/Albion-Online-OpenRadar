@@ -324,6 +324,46 @@
         </div>
     </div>
 
+    <!-- Hub Settings -->
+    <div class="collapse collapse-arrow bg-base-200 rounded-xl">
+        <input type="checkbox" id="collapse-hub"/>
+        <div class="collapse-title text-xl font-semibold flex items-center gap-2">
+            <i data-lucide="share-2" class="w-5 h-5 text-secondary"></i>
+            Hub (Shared Roads)
+        </div>
+        <div class="collapse-content">
+            <p class="text-xs text-base-content/60 mt-1 pb-2">Connect to a self-hosted OpenRadar Hub to share discovered Avalonian Road connections with your group instead of only keeping them locally. Leave disabled to keep roads local-only.</p>
+            <div class="pt-2 space-y-4">
+                <label class="flex items-center gap-3 p-2 rounded bg-base-300 cursor-pointer group hover:bg-base-300/70 w-fit">
+                    <input type="checkbox" id="settingHubEnabled" class="toggle toggle-primary toggle-sm">
+                    <i data-lucide="power" class="w-4 h-4 text-base-content/50"></i>
+                    <span class="text-base-content/80 text-sm group-hover:text-base-content">Enable Hub</span>
+                </label>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+                    <label class="flex flex-col gap-1">
+                        <span class="text-base-content/60 text-xs">Hub URL</span>
+                        <input id="settingHubUrl" type="text" placeholder="http://hub.example.com:8090"
+                               class="input input-bordered input-sm w-full">
+                    </label>
+                    <label class="flex flex-col gap-1">
+                        <span class="text-base-content/60 text-xs">Shared Secret</span>
+                        <input id="settingHubSecret" type="password" placeholder="group secret"
+                               class="input input-bordered input-sm w-full">
+                    </label>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <button id="hubSaveBtn" class="btn btn-primary btn-sm">
+                        <i data-lucide="save" class="w-4 h-4"></i>
+                        Save
+                    </button>
+                    <span id="hubSaveStatus" class="text-xs text-base-content/50"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Danger Zone -->
     <div class="card bg-error/5 border border-error/20">
         <div class="card-body">
@@ -381,6 +421,12 @@
             if (collapseNetwork) {
                 collapseNetwork.checked = settingsSync.getBool('collapse-settings-network', false);
                 addListener(collapseNetwork, 'change', () => settingsSync.setBool('collapse-settings-network', collapseNetwork.checked));
+            }
+
+            const collapseHub = document.getElementById('collapse-hub');
+            if (collapseHub) {
+                collapseHub.checked = settingsSync.getBool('collapse-settings-hub', false);
+                addListener(collapseHub, 'change', () => settingsSync.setBool('collapse-settings-hub', collapseHub.checked));
             }
 
             // Log level dropdown
@@ -447,6 +493,52 @@
                 settingsSync.setBool("settingServerLogsEnabled", loggingSettings.serverLogsEnabled);
                 settingsSync.setBool("settingPcapRecording", loggingSettings.pcapRecording);
             }
+
+            // Hub settings: URL/secret are backend-only (network.json), never localStorage.
+            const hubEnabledEl = document.getElementById('settingHubEnabled');
+            const hubUrlEl = document.getElementById('settingHubUrl');
+            const hubSecretEl = document.getElementById('settingHubSecret');
+            const hubSaveBtn = document.getElementById('hubSaveBtn');
+            const hubSaveStatus = document.getElementById('hubSaveStatus');
+
+            const hubSettings = await fetchBackendSettings('/api/settings/hub');
+            if (hubSettings) {
+                if (hubEnabledEl) hubEnabledEl.checked = !!hubSettings.enabled;
+                if (hubUrlEl) hubUrlEl.value = hubSettings.url || '';
+                if (hubSecretEl) hubSecretEl.value = hubSettings.secret || '';
+            }
+
+            async function postHubSettings(patch) {
+                try {
+                    const resp = await fetch('/api/settings/hub', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(patch)
+                    });
+                    return resp.ok;
+                } catch (err) {
+                    console.warn('[Settings] POST /api/settings/hub failed:', err);
+                    return false;
+                }
+            }
+
+            addListener(hubEnabledEl, 'change', async (e) => {
+                await postHubSettings({enabled: e.target.checked});
+            });
+
+            addListener(hubSaveBtn, 'click', async () => {
+                const ok = await postHubSettings({
+                    url: hubUrlEl ? hubUrlEl.value : '',
+                    secret: hubSecretEl ? hubSecretEl.value : ''
+                });
+                if (hubSaveStatus) {
+                    hubSaveStatus.textContent = ok ? 'Saved' : 'Save failed';
+                    setTimeout(() => { hubSaveStatus.textContent = ''; }, 3000);
+                }
+                if (window.toast) {
+                    ok ? window.toast.success('Hub settings saved') : window.toast.error('Failed to save Hub settings');
+                }
+            });
 
             // Map display setting
             bindCheckbox("settingShowMap");

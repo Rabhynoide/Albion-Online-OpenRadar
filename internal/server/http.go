@@ -34,10 +34,11 @@ type HTTPServer struct {
 	tmpl        *templates.Engine
 	version     string
 	assetID     string
-	devMode     bool
-	networkAPI  *NetworkAPI
-	settingsAPI *SettingsAPI
-	roadsAPI    *RoadsAPI
+	devMode        bool
+	networkAPI     *NetworkAPI
+	settingsAPI    *SettingsAPI
+	roadsAPI       *RoadsAPI
+	hubSettingsAPI *HubSettingsAPI
 }
 
 // buildID fingerprints the embedded assets. It is empty for an unversioned build,
@@ -122,6 +123,7 @@ func NewHTTPServer(
 	}
 	s.settingsAPI = NewSettingsAPI(appDir, log, recorder, captureDir)
 	s.roadsAPI = NewRoadsAPI(appDir)
+	s.hubSettingsAPI = NewHubSettingsAPI(appDir)
 	s.setupRoutes()
 	return s, nil
 }
@@ -167,6 +169,7 @@ func NewHTTPServerDev(
 	}
 	s.settingsAPI = NewSettingsAPI(appDir, log, recorder, captureDir)
 	s.roadsAPI = NewRoadsAPI(appDir)
+	s.hubSettingsAPI = NewHubSettingsAPI(appDir)
 	s.setupRoutes()
 	return s, nil
 }
@@ -215,6 +218,7 @@ func (s *HTTPServer) setupRoutes() {
 		s.networkAPI.Register(apiMux)
 	}
 	s.roadsAPI.Register(apiMux)
+	s.hubSettingsAPI.Register(apiMux)
 	s.mux.Handle("/api/", noStore(apiMux))
 }
 
