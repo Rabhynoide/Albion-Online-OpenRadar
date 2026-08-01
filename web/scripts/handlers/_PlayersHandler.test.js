@@ -5,13 +5,14 @@ vi.mock('../utils/SettingsSync.js', () => ({
     default: {
         getBool: vi.fn(() => true),
         getNumber: vi.fn((_k, d) => d),
-        getJSON: vi.fn(() => null),
+        getJSON: vi.fn((_k, d) => d ?? null),
     },
 }));
 
 vi.mock('../data/ZonesDatabase.js', () => ({
     default: {
         getPvpType: vi.fn(() => 'safe'),
+        getZone: vi.fn(() => ({})), // truthy = "known zone" by default
     },
 }));
 
@@ -26,7 +27,9 @@ describe('PlayersHandler', () => {
         vi.clearAllMocks();
         settingsSync.getBool.mockReturnValue(true);
         settingsSync.getNumber.mockImplementation((_k, d) => d);
+        settingsSync.getJSON.mockImplementation((_k, d) => d ?? null);
         zonesDatabase.getPvpType.mockReturnValue('safe');
+        zonesDatabase.getZone.mockReturnValue({});
 
         window.logger = {debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn()};
         window.currentMapId = 'safe-zone-01';
@@ -70,15 +73,31 @@ describe('PlayersHandler', () => {
             expect(handler.playersList[0].faction).toBe(5);
         });
 
-        // @suspect 2026-04-18 PLAY-1 (issue #65): hostile player in unknown zone does not trigger alert because zonesDatabase falls back to 'safe' for missing zones, and isPlayerThreat returns false for 'safe'.
-        test('synthetic hostile in unknown zone: alert should fire but does not', () => {
-            zonesDatabase.getPvpType.mockReturnValue('safe');
+        // @verified PLAY-1 (issue #65) fixed: a zone missing from zones.json (getZone returns
+        // null) must not be silently treated as 'safe' for alerting - getPvpType()'s 'safe'
+        // default is only reached for genuinely *known* zones now (getAlertPvpType checks
+        // getZone() first).
+        test('PLAY-1: hostile in a zone missing from zones.json still triggers the alert', () => {
+            zonesDatabase.getZone.mockReturnValue(null); // zone unknown, not just "safe"
+            zonesDatabase.getPvpType.mockReturnValue('safe'); // what getPvpType() would fall back to
             window.currentMapId = 'UNMAPPED_AVALON_HIDEOUT';
             const playSpy = vi.spyOn(handler, 'playThreatSound').mockImplementation(() => {});
 
             handler.handleNewPlayerEvent(1, {1: 'Hostile', 8: '', 53: 255, 51: null, 40: [], 43: []});
 
             expect(handler.getSize()).toBe(1);
+            expect(playSpy).toHaveBeenCalled();
+        });
+
+        // @verified: a passive player (faction=0) in an unknown zone still does not alert -
+        // the 'yellow' fallback only makes faction=255 alert, same as a real yellow zone.
+        test('passive player in a zone missing from zones.json does not trigger the alert', () => {
+            zonesDatabase.getZone.mockReturnValue(null);
+            window.currentMapId = 'UNMAPPED_AVALON_HIDEOUT';
+            const playSpy = vi.spyOn(handler, 'playThreatSound').mockImplementation(() => {});
+
+            handler.handleNewPlayerEvent(1, {1: 'Passive', 8: '', 53: 0, 51: null, 40: [], 43: []});
+
             expect(playSpy).not.toHaveBeenCalled();
         });
 
@@ -265,16 +284,45 @@ describe('PlayersHandler', () => {
             expect(playSpy).not.toHaveBeenCalled();
         });
 
-        // @suspect 2026-04-18 PLAY-2 (issue #36): alreadyIgnoredPlayers list is never consulted in triggerHostileAlert. A player pushed into that list still triggers a sound alert on faction change.
-        test('synthetic PLAY-2: ignored player still triggers alert on faction change in red zone', () => {
+        // @verified PLAY-2 (issue #36) fixed: the Ignore List page persists ignored player
+        // names to settingsSync ('ignoreList' key, see internal/templates/pages/ignorelist.gohtml)
+        // - triggerHostileAlert (via updatePlayerFaction) must respect it.
+        test('PLAY-2: player on the Ignore List does not trigger alert on faction change in red zone', () => {
             zonesDatabase.getPvpType.mockReturnValue('red');
             handler.handleNewPlayerEvent(1, {1: 'Alice', 8: '', 53: 0, 51: null, 40: [], 43: []});
-            handler.alreadyIgnoredPlayers = [{id: 1}];
+            settingsSync.getJSON.mockImplementation((k, d) => k === 'ignoreList' ? ['Alice'] : (d ?? null));
+            const playSpy = vi.spyOn(handler, 'playThreatSound').mockImplementation(() => {});
+
+            handler.updatePlayerFaction(1, 255);
+
+            expect(playSpy).not.toHaveBeenCalled();
+        });
+
+        // @verified: a player NOT on the Ignore List still alerts normally (regression guard
+        // for the PLAY-2 fix above).
+        test('a player not on the Ignore List still triggers alert on faction change in red zone', () => {
+            zonesDatabase.getPvpType.mockReturnValue('red');
+            handler.handleNewPlayerEvent(1, {1: 'Alice', 8: '', 53: 0, 51: null, 40: [], 43: []});
+            settingsSync.getJSON.mockImplementation((k, d) => k === 'ignoreList' ? ['SomeoneElse'] : (d ?? null));
             const playSpy = vi.spyOn(handler, 'playThreatSound').mockImplementation(() => {});
 
             handler.updatePlayerFaction(1, 255);
 
             expect(playSpy).toHaveBeenCalled();
+        });
+
+        // @verified PLAY-2 fixed at the spawn path too: a player who spawns already hostile
+        // while on the Ignore List must not alert either (handleNewPlayerEvent's alert path
+        // is separate from triggerHostileAlert's faction-change path, so this needs its own
+        // coverage - the ignorelist.gohtml page's warning didn't scope the bug to one path).
+        test('PLAY-2: player on the Ignore List does not trigger alert when spawning already hostile', () => {
+            zonesDatabase.getPvpType.mockReturnValue('red');
+            settingsSync.getJSON.mockImplementation((k, d) => k === 'ignoreList' ? ['Hostile'] : (d ?? null));
+            const playSpy = vi.spyOn(handler, 'playThreatSound').mockImplementation(() => {});
+
+            handler.handleNewPlayerEvent(1, {1: 'Hostile', 8: '', 53: 255, 51: null, 40: [], 43: []});
+
+            expect(playSpy).not.toHaveBeenCalled();
         });
     });
 
@@ -451,15 +499,13 @@ describe('PlayersHandler', () => {
             expect(handler.playersList[0].id).toBe(2);
         });
 
-        // @verified 2026-04-18: Clear empties playersList and resets alreadyIgnoredPlayers.
-        test('synthetic: Clear empties playersList and resets alreadyIgnoredPlayers', () => {
+        // @verified: Clear empties playersList.
+        test('synthetic: Clear empties playersList', () => {
             handler.handleNewPlayerEvent(1, {1: 'A', 8: '', 53: 0, 51: null, 40: [], 43: []});
-            handler.alreadyIgnoredPlayers = [{id: 1}];
 
             handler.Clear();
 
             expect(handler.getSize()).toBe(0);
-            expect(handler.alreadyIgnoredPlayers).toEqual([]);
         });
 
         // @verified 2026-04-18: cleanupStaleEntities removes players older than maxAgeMs and returns count.
@@ -527,6 +573,20 @@ describe('PlayersHandler', () => {
 
             expect(result).toHaveLength(1);
             expect(result[0].faction).toBe(255);
+        });
+
+        // @verified: the Ignore List page promises ignored players "won't be shown on radar" -
+        // getFilteredPlayers() must exclude them, not just the alert path (maybeAlert).
+        test('a player on the Ignore List is excluded regardless of faction', () => {
+            zonesDatabase.getPvpType.mockReturnValue('red');
+            handler.handleNewPlayerEvent(1, {1: 'Ignored', 8: '', 53: 255, 51: null, 40: [], 43: []});
+            handler.handleNewPlayerEvent(2, {1: 'Visible', 8: '', 53: 255, 51: null, 40: [], 43: []});
+            settingsSync.getJSON.mockImplementation((k, d) => k === 'ignoreList' ? ['Ignored'] : (d ?? null));
+
+            const result = handler.getFilteredPlayers();
+
+            expect(result).toHaveLength(1);
+            expect(result[0].nickname).toBe('Visible');
         });
     });
 
@@ -638,6 +698,30 @@ describe('PlayersHandler', () => {
             handler.handleNewPlayerEvent(2, {1: 'Hostile', 8: '', 53: 255, 51: null, 40: [], 43: []});
 
             expect(handler.getThreatPlayers()).toHaveLength(2);
+        });
+
+        // @verified: getThreatPlayers drives RadarRenderer's pulsing threat-border warning -
+        // an ignored player must not trigger it either.
+        test('a player on the Ignore List is excluded from threats', () => {
+            zonesDatabase.getPvpType.mockReturnValue('red');
+            handler.handleNewPlayerEvent(1, {1: 'Ignored', 8: '', 53: 255, 51: null, 40: [], 43: []});
+            handler.handleNewPlayerEvent(2, {1: 'Visible', 8: '', 53: 255, 51: null, 40: [], 43: []});
+            settingsSync.getJSON.mockImplementation((k, d) => k === 'ignoreList' ? ['Ignored'] : (d ?? null));
+
+            const threats = handler.getThreatPlayers();
+
+            expect(threats).toHaveLength(1);
+            expect(threats[0].nickname).toBe('Visible');
+        });
+
+        // @verified PLAY-1 fixed at getThreatPlayers() too: a zone missing from zones.json
+        // must not be treated as 'safe' here either.
+        test('PLAY-1: hostile in a zone missing from zones.json is still a threat', () => {
+            zonesDatabase.getZone.mockReturnValue(null);
+            zonesDatabase.getPvpType.mockReturnValue('safe');
+            handler.handleNewPlayerEvent(1, {1: 'Hostile', 8: '', 53: 255, 51: null, 40: [], 43: []});
+
+            expect(handler.getThreatPlayers()).toHaveLength(1);
         });
     });
 

@@ -125,6 +125,16 @@ export class PlayersHandler {
         return faction === 255;
     }
 
+    // zonesDatabase.getPvpType() defaults an unrecognized zone id to 'safe' - a reasonable
+    // choice for general UI coloring (avoids false-alarm red/black rendering for zones missing
+    // from zones.json), but for threat *alerting* specifically it silently suppresses real
+    // hostile alerts (PLAY-1, issue #65): a hostile player in a zone we just don't have data
+    // for would otherwise never trigger a sound/flash. Fall back to 'yellow' (faction=255
+    // still alerts, but passives don't) instead of 'safe' when the zone itself is unknown.
+    getAlertPvpType(mapId) {
+        return zonesDatabase.getZone(mapId) ? zonesDatabase.getPvpType(mapId) : 'yellow';
+    }
+
     updateItems(id, Parameters) {
         // eslint-disable-next-line no-useless-assignment
         let items = null;
@@ -171,7 +181,7 @@ export class PlayersHandler {
         }
 
         const mapId = window.currentMapId;
-        const pvpType = zonesDatabase.getPvpType(mapId);
+        const pvpType = this.getAlertPvpType(mapId);
         const isThreat = this.isPlayerThreat(faction, pvpType);
 
         window.logger?.info(CATEGORIES.PLAYERS, 'PlayerDetected', {
@@ -185,15 +195,28 @@ export class PlayersHandler {
             playersCount: this.playersList.length
         });
 
-        if (isThreat && mapId && settingsSync.getBool('settingFlash')) {
-            this.triggerScreenFlash();
-        }
-
-        if (isThreat && mapId && settingsSync.getBool('settingSound')) {
-            this.playThreatSound();
+        if (isThreat && mapId) {
+            this.maybeAlert(nickname);
         }
 
         return 2;
+    }
+
+    // Fires the configured flash/sound alert, unless the player is on the Ignore List (PLAY-2,
+    // issue #36 - the Ignore List page persists ignored names to settingsSync, see
+    // internal/templates/pages/ignorelist.gohtml; this must be checked at every alert call
+    // site, not just the faction-change one, since a player can also spawn already-hostile).
+    maybeAlert(nickname) {
+        const ignoreList = settingsSync.getJSON('ignoreList', []);
+        if (ignoreList.includes(nickname)) return;
+
+        if (settingsSync.getBool('settingFlash')) {
+            this.triggerScreenFlash();
+        }
+
+        if (settingsSync.getBool('settingSound')) {
+            this.playThreatSound();
+        }
     }
 
     handleMountedPlayerEvent(id, parameters) {
@@ -274,7 +297,6 @@ export class PlayersHandler {
 
     Clear() {
         this.playersList = [];
-        this.alreadyIgnoredPlayers = [];
         this._playersById.clear();
     }
 
@@ -293,16 +315,10 @@ export class PlayersHandler {
     }
 
     triggerHostileAlert(player) {
-        const pvpType = zonesDatabase.getPvpType(window.currentMapId);
+        const pvpType = this.getAlertPvpType(window.currentMapId);
         if (!this.isPlayerThreat(player.faction, pvpType)) return;
 
-        if (settingsSync.getBool('settingFlash')) {
-            this.triggerScreenFlash();
-        }
-
-        if (settingsSync.getBool('settingSound')) {
-            this.playThreatSound();
-        }
+        this.maybeAlert(player.nickname);
 
         window.logger?.info(CATEGORIES.PLAYERS, 'PlayerBecameHostile', {
             id: player.id,
@@ -370,10 +386,16 @@ export class PlayersHandler {
         const showPassive = settingsSync.getBool('settingPassivePlayers') ?? true;
         const showFaction = settingsSync.getBool('settingFactionPlayers') ?? true;
         const showDangerous = settingsSync.getBool('settingDangerousPlayers') ?? true;
+        // The Ignore List page (internal/templates/pages/ignorelist.gohtml) promises ignored
+        // players are excluded from the radar too, not just alerts - PLAY-2's fix only
+        // covered maybeAlert(), so this was still silently broken.
+        const ignoreList = settingsSync.getJSON('ignoreList', []);
 
         const pvpType = zonesDatabase.getPvpType(window.currentMapId);
 
         return this.playersList.filter(player => {
+            if (ignoreList.includes(player.nickname)) return false;
+
             // In blackzone, ALL players are threats - use showDangerous setting
             if (pvpType === 'black') {
                 return showDangerous;
@@ -406,8 +428,13 @@ export class PlayersHandler {
         };
     }
 
+    // Drives RadarRenderer's pulsing threat-border warning - an ignored player must not
+    // trigger it either, same reasoning as maybeAlert().
     getThreatPlayers() {
-        const pvpType = zonesDatabase.getPvpType(window.currentMapId);
-        return this.playersList.filter(p => this.isPlayerThreat(p.faction, pvpType));
+        const pvpType = this.getAlertPvpType(window.currentMapId);
+        const ignoreList = settingsSync.getJSON('ignoreList', []);
+        return this.playersList.filter(p =>
+            !ignoreList.includes(p.nickname) && this.isPlayerThreat(p.faction, pvpType)
+        );
     }
 }

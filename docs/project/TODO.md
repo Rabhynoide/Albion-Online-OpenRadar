@@ -9,7 +9,7 @@
 |---|---|---|
 | Resources | working | database-driven, cleanup, filtering, T1-T8 with enchantments, render-time gate (#82) |
 | Mobs | working | OFFSET=16 confirmed (#93), 9 classifications, color-coded threat |
-| Players | working | faction detection, zone-aware alerts, ignore list, Mist instance pvpType inherits parent (#103) |
+| Players | working | faction detection, zone-aware alerts (unmapped zones no longer suppress hostile alerts, #65), ignore list actually respected by alerts/radar/threat-border (#36), Mist instance pvpType inherits parent (#103) |
 | Zones | working | PvP type detection, threat logic |
 | Mists | working | portals, feu follets, wisp cages (see `docs/technical/MISTS_DETECTION.md`) |
 | Dungeons | working | per-type filters Solo, Group (Duo), Corrupted, Hellgate validated end to end. Per-enchant filters E0-E4 work across every family. Five group families unblocked by #78 (T6_MORGANA, T6_KEEPER, T6_UNDEAD, T5_PORTAL_ROYAL_SOLO, T6_PORTAL). Avalonian dungeons, per-difficulty filters, and a dungeons database stay open. |
@@ -44,6 +44,20 @@
 - [ ] Quality metrics dashboard.
 - [ ] Configuration file support beyond `network.json`.
 
+## Closed in v2.3 (in progress)
+
+- **PLAY-1** (#65): a zone missing from `zones.json` no longer gets silently treated as
+  `'safe'` for threat alerting. `PlayersHandler.getAlertPvpType()` checks
+  `zonesDatabase.getZone()` first and falls back to `'yellow'` (not `'safe'`) only when the
+  zone itself is genuinely unrecognized, so `faction=255` still alerts.
+- **PLAY-2** (#36): the Ignore List (`internal/templates/pages/ignorelist.gohtml`,
+  `settingsSync` key `ignoreList`) is now actually consulted - by every alert path
+  (`maybeAlert()`, covering both the faction-change and already-hostile-on-spawn cases),
+  by `getFilteredPlayers()` (ignored players no longer show on the radar/player list,
+  matching what the page always claimed), and by `getThreatPlayers()` (no pulsing threat
+  border either). The dead `alreadyIgnoredPlayers` field (never populated by anything) is
+  removed. The page's "Known limitation" banner is removed accordingly.
+
 ## Closed in v2.2
 
 For history. These were `test.fails` or open register entries that flipped to verified during the v2.2 cycle:
@@ -67,8 +81,6 @@ For history. These were `test.fails` or open register entries that flipped to ve
 - **MIST-4** (Mists cluster rarity): zone-level rarity lives in the `ChangeCluster` operation response `Parameters[3]` byte array, last byte. Plumbing it requires a Mists capture with opcode 41 response and a cluster-rarity store.
 - **MIST-7** (cluster id routing): events 518, 519, 520, 529 carry the Mists cluster id but no handler consumes them. Follow-up PR to plumb a Mists state surface readable by drawings.
 - **HARV-2** (living spawn with E0 off plus event 46 enchant update): #82 moved the gate to render-time, which fixes the user-visible toggle latency, but the underlying recovery from a depleted-then-regenerated state is not addressed. Pinned by `test.fails`.
-- **PLAY-1** (#65): hostile in unknown zone does not fire the alert because `zonesDatabase.getPvpType(unknown)` falls back to `safe` and `isPlayerThreat(255, 'safe')` returns `false`. Pinned by `test.fails` in `PlayersHandler.test.js`.
-- **PLAY-2** (#36): ignored player still triggers the alert when their faction changes to 255 in a red zone. Pinned by `test.fails`.
 - **ROUTER-1** (#57): direct hashtable parse of `Parameters[103]` is a follow-up. The user-visible BZ alert symptom was resolved by deriving `map.isBZ` from `zonesDatabase.getPvpType(mapId)` (#87), which is the correct long-term path; the direct parse stays pinned in case a future change needs the raw value.
 - **OPS-1..4**: four call sites in `EventRouter.js` hardcode opcodes whose upstream name does not match the local handler semantics (event 590 logs as `key_sync`, request 21 is the pre-Protocol18 Move opcode kept as legacy fallback, response 35 treated as map-change with debounce, response 137 is a probably-dead character-stats branch). Each carries a `FIXME ops-drift` comment. Resolution requires pcap-backed investigation.
 
