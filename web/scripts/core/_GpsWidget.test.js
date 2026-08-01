@@ -30,6 +30,7 @@ function setupDom() {
         <button id="gpsClearBtn"></button>
         <div id="gpsResult"></div>
         <div id="gpsRouteDots"></div>
+        <button id="gpsRemoveRouteBtn" style="display:none;"></button>
     `;
 }
 
@@ -233,6 +234,86 @@ describe('GpsWidget', () => {
             const cleanup = GpsWidget.startLiveGps(zoneGraph, vi.fn(), vi.fn(), vi.fn(), vi.fn());
             expect(document.getElementById('gpsResult').textContent).toContain("unexplored Avalonian Road");
             cleanup();
+        });
+    });
+
+    describe('"remove this route" button (issue #5)', () => {
+        function liveZoneGraph(overrides = {}) {
+            return {
+                getNextHop: vi.fn(() => ({nextZoneId: '0002', hops: 1, viaPos: null})),
+                getFullPath: vi.fn(() => ({path: ['0001', '0002'], stale: false, assumed: false})),
+                removeEdge: vi.fn(),
+                ...overrides,
+            };
+        }
+
+        test('is hidden while no destination is set', async () => {
+            await GpsWidget.initGpsWidget();
+            expect(document.getElementById('gpsRemoveRouteBtn').style.display).toBe('none');
+        });
+
+        test('is hidden for the static (non-live) message', async () => {
+            settingsSync.getJSON.mockReturnValue({id: '0002', name: 'Bridgewatch'});
+            await GpsWidget.initGpsWidget();
+            expect(document.getElementById('gpsRemoveRouteBtn').style.display).toBe('none');
+        });
+
+        test('is shown once a live "Next:" route is computed', async () => {
+            settingsSync.getJSON.mockReturnValue({id: '0002', name: 'Bridgewatch'});
+            await GpsWidget.initGpsWidget();
+            window.currentMapId = '0001';
+
+            const cleanup = GpsWidget.startLiveGps(liveZoneGraph(), vi.fn(), vi.fn(() => ({x: 0, y: 0})), vi.fn(), vi.fn());
+
+            expect(document.getElementById('gpsRemoveRouteBtn').style.display).toBe('');
+            cleanup();
+        });
+
+        test('is hidden again when no route is found', async () => {
+            settingsSync.getJSON.mockReturnValue({id: '0002', name: 'Bridgewatch'});
+            await GpsWidget.initGpsWidget();
+            window.currentMapId = '0001';
+            const zoneGraph = liveZoneGraph({getNextHop: vi.fn(() => null)});
+
+            const cleanup = GpsWidget.startLiveGps(zoneGraph, vi.fn(), vi.fn(), vi.fn(), vi.fn());
+
+            expect(document.getElementById('gpsRemoveRouteBtn').style.display).toBe('none');
+            cleanup();
+        });
+
+        test('is hidden again on cleanup (reverting to the static message)', async () => {
+            settingsSync.getJSON.mockReturnValue({id: '0002', name: 'Bridgewatch'});
+            await GpsWidget.initGpsWidget();
+            window.currentMapId = '0001';
+
+            const cleanup = GpsWidget.startLiveGps(liveZoneGraph(), vi.fn(), vi.fn(() => ({x: 0, y: 0})), vi.fn(), vi.fn());
+            cleanup();
+
+            expect(document.getElementById('gpsRemoveRouteBtn').style.display).toBe('none');
+        });
+
+        test('clicking removes exactly the edge shown as "Next:" and re-renders', async () => {
+            settingsSync.getJSON.mockReturnValue({id: '0002', name: 'Bridgewatch'});
+            zonesDatabase.getZoneType.mockReturnValue(''); // not on an Avalonian Road
+            await GpsWidget.initGpsWidget();
+            window.currentMapId = '0001';
+            const zoneGraph = liveZoneGraph();
+
+            const cleanup = GpsWidget.startLiveGps(zoneGraph, vi.fn(), vi.fn(() => ({x: 0, y: 0})), vi.fn(), vi.fn());
+            zoneGraph.getNextHop.mockReturnValue(null); // simulate the edge being gone after removal
+
+            document.getElementById('gpsRemoveRouteBtn').click();
+
+            expect(zoneGraph.removeEdge).toHaveBeenCalledWith('0001', '0002');
+            expect(document.getElementById('gpsResult').textContent).toBe('Destination: Bridgewatch. No known route from here yet.');
+            cleanup();
+        });
+
+        test('clicking with no live route showing is a no-op', async () => {
+            await GpsWidget.initGpsWidget(); // no destination -> button never shown, no liveContext
+            document.getElementById('gpsRemoveRouteBtn').click();
+            // Nothing to assert on zoneGraph (none exists yet) - just confirms no throw.
+            expect(document.getElementById('gpsResult').textContent).toBe('No destination set.');
         });
     });
 });

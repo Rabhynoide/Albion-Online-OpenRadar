@@ -165,3 +165,58 @@ func TestAPI_PostUpsertsExistingEdge(t *testing.T) {
 		t.Fatalf("expected upsert to keep a single edge, got %+v", got)
 	}
 }
+
+func TestAPI_DeleteRemovesEdge(t *testing.T) {
+	mux := newTestAPI(t)
+
+	body, _ := json.Marshal(map[string]any{"from": "A", "to": "B"})
+	mux.ServeHTTP(httptest.NewRecorder(), authedRequest(http.MethodPost, "/api/roads/edges", body))
+
+	del, _ := json.Marshal(map[string]any{"from": "A", "to": "B"})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, authedRequest(http.MethodDelete, "/api/roads/edges", del))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("DELETE status %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	listRec := httptest.NewRecorder()
+	mux.ServeHTTP(listRec, authedRequest(http.MethodGet, "/api/roads/edges", nil))
+	var got []map[string]any
+	if err := json.NewDecoder(listRec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected edge to be gone, got %+v", got)
+	}
+}
+
+func TestAPI_DeleteWithoutSecretRejected(t *testing.T) {
+	mux := newTestAPI(t)
+	body, _ := json.Marshal(map[string]any{"from": "A", "to": "B"})
+	req := httptest.NewRequest(http.MethodDelete, "/api/roads/edges", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status %d, want 401", rec.Code)
+	}
+}
+
+func TestAPI_DeleteMissingFromOrTo(t *testing.T) {
+	mux := newTestAPI(t)
+	body, _ := json.Marshal(map[string]any{"from": "", "to": "B"})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, authedRequest(http.MethodDelete, "/api/roads/edges", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", rec.Code)
+	}
+}
+
+func TestAPI_DeleteNonexistentEdgeStillReturnsOK(t *testing.T) {
+	mux := newTestAPI(t)
+	body, _ := json.Marshal(map[string]any{"from": "X", "to": "Y"})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, authedRequest(http.MethodDelete, "/api/roads/edges", body))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200 (delete is idempotent)", rec.Code)
+	}
+}

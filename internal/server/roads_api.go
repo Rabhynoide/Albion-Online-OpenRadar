@@ -35,6 +35,7 @@ func NewRoadsAPI(appDir string) *RoadsAPI {
 func (a *RoadsAPI) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/roads/edges", a.handleList)
 	mux.HandleFunc("POST /api/roads/edges", a.handleAdd)
+	mux.HandleFunc("DELETE /api/roads/edges", a.handleDelete)
 }
 
 func (a *RoadsAPI) handleList(w http.ResponseWriter, _ *http.Request) {
@@ -97,21 +98,48 @@ func (a *RoadsAPI) handleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if cfg, _ := capture.ReadConfig(a.appDir); cfg.Hub.Enabled {
-		a.forwardToHub(cfg.Hub, body)
+		a.forwardToHub(http.MethodPost, cfg.Hub, body)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// forwardToHub best-effort mirrors a locally-persisted edge to the configured Hub.
-// Failures are not surfaced to the browser: the local write already succeeded, and
-// the next successful GET (local or Hub) will still reflect this edge.
-func (a *RoadsAPI) forwardToHub(cfg capture.HubConfig, body roads.EdgeRequest) {
+// handleDelete removes a manually-flagged-dead edge (issue #5: "remove this route" button on
+// the GPS panel, for a discovered road that reset/no longer connects the way it used to)
+// rather than waiting for the frontend's own staleness window to age it out.
+func (a *RoadsAPI) handleDelete(w http.ResponseWriter, r *http.Request) {
+	var body roads.EdgeRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.From == "" || body.To == "" {
+		http.Error(w, "from and to are required", http.StatusBadRequest)
+		return
+	}
+	if err := roads.MutateStore(a.appDir, func(s *roads.Store) {
+		roads.RemoveEdge(s, body.From, body.To)
+	}); err != nil {
+		http.Error(w, "persist: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if cfg, _ := capture.ReadConfig(a.appDir); cfg.Hub.Enabled {
+		a.forwardToHub(http.MethodDelete, cfg.Hub, body)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// forwardToHub best-effort mirrors a locally-applied edge add/remove to the configured Hub.
+// Failures are not surfaced to the browser: the local write already succeeded, and the next
+// successful GET (local or Hub) will still reflect it.
+func (a *RoadsAPI) forwardToHub(method string, cfg capture.HubConfig, body roads.EdgeRequest) {
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return
 	}
-	req, err := http.NewRequest(http.MethodPost, cfg.URL+"/api/roads/edges", bytes.NewReader(payload))
+	req, err := http.NewRequest(method, cfg.URL+"/api/roads/edges", bytes.NewReader(payload))
 	if err != nil {
 		return
 	}

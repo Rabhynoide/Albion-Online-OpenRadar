@@ -104,6 +104,47 @@ func TestAddEdgeDistinguishesDirection(t *testing.T) {
 	}
 }
 
+func TestRemoveEdgeDeletesMatchingEdge(t *testing.T) {
+	var s Store
+	AddEdge(&s, "A", "B", nil)
+	AddEdge(&s, "A", "C", nil)
+
+	removed := RemoveEdge(&s, "A", "B")
+
+	if !removed {
+		t.Error("RemoveEdge should report true for an existing edge")
+	}
+	if len(s.Edges) != 1 || s.Edges[0].To != "C" {
+		t.Fatalf("expected only A->C to remain, got %+v", s.Edges)
+	}
+}
+
+func TestRemoveEdgeLeavesOppositeDirectionAlone(t *testing.T) {
+	var s Store
+	AddEdge(&s, "A", "B", nil)
+	AddEdge(&s, "B", "A", nil)
+
+	RemoveEdge(&s, "A", "B")
+
+	if len(s.Edges) != 1 || s.Edges[0].From != "B" || s.Edges[0].To != "A" {
+		t.Fatalf("expected only B->A to remain, got %+v", s.Edges)
+	}
+}
+
+func TestRemoveEdgeMissingEdgeIsNoOp(t *testing.T) {
+	var s Store
+	AddEdge(&s, "A", "B", nil)
+
+	removed := RemoveEdge(&s, "X", "Y")
+
+	if removed {
+		t.Error("RemoveEdge should report false for a nonexistent edge")
+	}
+	if len(s.Edges) != 1 {
+		t.Fatalf("existing edge should be untouched, got %+v", s.Edges)
+	}
+}
+
 func TestMutateStore_PreservesUntouchedEdges(t *testing.T) {
 	dir := t.TempDir()
 	seed := Store{Edges: []Edge{{From: "A", To: "B", DiscoveredAt: time.Now()}}}

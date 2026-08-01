@@ -70,6 +70,14 @@ func (s *Store) UpsertEdge(from, to string, pos *[2]float64) error {
 	return nil
 }
 
+// DeleteEdge removes the (from,to) edge, if present.
+func (s *Store) DeleteEdge(from, to string) error {
+	if _, err := s.db.Exec(`DELETE FROM edges WHERE "from" = ? AND "to" = ?`, from, to); err != nil {
+		return fmt.Errorf("delete edge: %w", err)
+	}
+	return nil
+}
+
 // ListEdges returns every known edge.
 func (s *Store) ListEdges() ([]roads.Edge, error) {
 	rows, err := s.db.Query(`SELECT "from", "to", pos_x, pos_y, discovered_at FROM edges`)

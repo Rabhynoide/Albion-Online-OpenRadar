@@ -63,6 +63,27 @@ game-data files, see below. An assumed edge's exit position is always `null`: th
 exit's position lives in the *other* zone's local coordinates, which `reportTransition` never
 observes (it only knows the pre-transition position, in the zone being left).
 
+## Manual removal (issue #5)
+
+The 24h staleness window is a passive fallback, not a guarantee - a Road of Avalon can reset
+to a different connection well before that, and the GPS would keep confidently suggesting a
+dead exit in the meantime. The sidebar GPS widget's "Remove this route" button (shown
+whenever a live `getNextHop()` result is on screen) calls `ZoneGraph.removeEdge(from, to)` for
+exactly that edge:
+
+- Removes the edge from the in-memory adjacency map immediately, so the next `renderResult()`
+  recomputes with it gone (or falls through to "no known route").
+- Best-effort `DELETE /api/roads/edges` to the backend (mirrors `reportTransition`'s
+  best-effort `POST`), which prunes it from `roads.json` and forwards the deletion to the Hub
+  if one is configured (see `internal/roads.RemoveEdge`, `internal/hub.Store.DeleteEdge`).
+- Also drops the assumed reverse if it was only ever inferred from the edge being removed
+  (never touches a separately-confirmed reverse edge).
+- No-ops on static (open-world) edges - those aren't persisted through this API and don't
+  expire, so removing one in memory would just be undone by the next `load()`. Currently not
+  distinguished in the UI (the button doesn't know a hop's source), so clicking it on a static
+  hop is a silent no-op rather than a visible error - acceptable since the button only matters
+  in practice for Avalon Road hops, which are never static.
+
 ## Roads of Avalon constants (from `ao-bin-dumps`, not the wire)
 
 The per-instance exact remaining lifetime of a specific road/portal is **not observable** -

@@ -43,6 +43,9 @@ function pvpColor(zoneId) {
 
 let elements = null;
 let liveContext = null; // set by startLiveGps(); null means "show a static, non-live message"
+// The (from,to) of the edge currently shown as "Next: ..." - the only edge the "remove this
+// route" button is allowed to touch, so a click always matches what's on screen.
+let removableEdge = null;
 
 function getElements() {
     if (elements) return elements;
@@ -52,9 +55,17 @@ function getElements() {
     const clearBtn = document.getElementById('gpsClearBtn');
     const resultEl = document.getElementById('gpsResult');
     const routeDotsEl = document.getElementById('gpsRouteDots');
-    if (!input || !optionsList || !setBtn || !clearBtn || !resultEl || !routeDotsEl) return null;
-    elements = {input, optionsList, setBtn, clearBtn, resultEl, routeDotsEl};
+    const removeRouteBtn = document.getElementById('gpsRemoveRouteBtn');
+    if (!input || !optionsList || !setBtn || !clearBtn || !resultEl || !routeDotsEl || !removeRouteBtn) return null;
+    elements = {input, optionsList, setBtn, clearBtn, resultEl, routeDotsEl, removeRouteBtn};
     return elements;
+}
+
+// Hides the "remove this route" button and forgets which edge it would have removed -
+// called from every renderResult() branch that isn't showing a concrete next-hop edge.
+function hideRemoveRouteButton(els) {
+    removableEdge = null;
+    els.removeRouteBtn.style.display = 'none';
 }
 
 function clearRouteDots(routeDotsEl) {
@@ -100,12 +111,14 @@ function renderResult() {
     if (!dest?.id) {
         els.resultEl.textContent = 'No destination set.';
         clearRouteDots(els.routeDotsEl);
+        hideRemoveRouteButton(els);
         return;
     }
 
     if (!liveContext) {
         els.resultEl.textContent = `Destination: ${dest.name}. Open the Radar page to see the live route.`;
         clearRouteDots(els.routeDotsEl);
+        hideRemoveRouteButton(els);
         return;
     }
 
@@ -114,11 +127,13 @@ function renderResult() {
     if (currentZoneId === undefined || currentZoneId === null || currentZoneId === -1) {
         els.resultEl.textContent = `Destination: ${dest.name}. Waiting for zone data...`;
         clearRouteDots(els.routeDotsEl);
+        hideRemoveRouteButton(els);
         return;
     }
     if (String(currentZoneId) === String(dest.id)) {
         els.resultEl.textContent = `You are in ${dest.name}.`;
         clearRouteDots(els.routeDotsEl);
+        hideRemoveRouteButton(els);
         return;
     }
 
@@ -129,6 +144,7 @@ function renderResult() {
             ? `Destination: ${dest.name}. You're on an unexplored Avalonian Road - the GPS learns each hop as you walk it, so this route isn't known yet. Keep going and it'll pick up from here next time.`
             : `Destination: ${dest.name}. No known route from here yet.`;
         clearRouteDots(els.routeDotsEl);
+        hideRemoveRouteButton(els);
         return;
     }
 
@@ -161,6 +177,13 @@ function renderResult() {
     } else {
         clearRouteDots(els.routeDotsEl);
     }
+
+    // Issue #5: a discovered road can reset/change before the 24h staleness window catches
+    // up - let the player flag "this exit doesn't exist anymore" instead of waiting it out.
+    // removeEdge() itself no-ops on static (non-discovered) edges, so this is safe to offer
+    // even when we can't tell from here whether the hop came from the static graph or not.
+    removableEdge = {from: String(currentZoneId), to: hop.nextZoneId};
+    els.removeRouteBtn.style.display = '';
 }
 
 function setDestination() {
@@ -170,6 +193,7 @@ function setDestination() {
     if (!id || !zonesDatabase?.getZone(id)) {
         els.resultEl.textContent = 'Unknown zone - pick one from the suggestions list.';
         clearRouteDots(els.routeDotsEl);
+        hideRemoveRouteButton(els);
         return;
     }
     settingsSync.setJSON('gpsDestination', {id, name: zonesDatabase.getZoneName(id)});
@@ -181,6 +205,15 @@ function clearDestination() {
     if (!els) return;
     settingsSync.setJSON('gpsDestination', null);
     els.input.value = '';
+    renderResult();
+}
+
+// Removes exactly the edge currently shown as "Next: ..." (issue #5). removableEdge is only
+// ever set by renderResult()'s live-route branch, so this can't act on stale UI state - if
+// the route changed since the button was drawn, the next render already updated it.
+function removeCurrentRoute() {
+    if (!removableEdge || !liveContext) return;
+    liveContext.zoneGraph.removeEdge(removableEdge.from, removableEdge.to);
     renderResult();
 }
 
@@ -205,6 +238,7 @@ export async function initGpsWidget() {
 
     els.setBtn.addEventListener('click', setDestination);
     els.clearBtn.addEventListener('click', clearDestination);
+    els.removeRouteBtn.addEventListener('click', removeCurrentRoute);
 
     const savedDest = settingsSync.getJSON('gpsDestination', null);
     if (savedDest?.name) els.input.value = gpsZoneLabel(savedDest.id, {name: savedDest.name});

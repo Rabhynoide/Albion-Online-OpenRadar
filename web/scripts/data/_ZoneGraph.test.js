@@ -237,6 +237,84 @@ describe("ZoneGraph.reportTransition", () => {
   });
 });
 
+describe("ZoneGraph.removeEdge", () => {
+  let graph;
+  let originalFetch;
+  let calls;
+
+  beforeEach(() => {
+    graph = new ZoneGraph();
+    originalFetch = globalThis.fetch;
+    calls = [];
+    globalThis.fetch = (url, init) => {
+      calls.push({ url, init });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: "ok" }) });
+    };
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("removes a discovered edge from memory and DELETEs it", async () => {
+    graph.loadFromEdges([], [{ from: "A", to: "TNL-001", pos: [1, 1], discoveredAt: new Date().toISOString() }]);
+
+    const removed = graph.removeEdge("A", "TNL-001");
+
+    expect(removed).toBe(true);
+    expect(graph.hasEdge("A", "TNL-001")).toBe(false);
+
+    await vi.waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].url).toBe("/api/roads/edges");
+    expect(calls[0].init.method).toBe("DELETE");
+    expect(JSON.parse(calls[0].init.body)).toEqual({ from: "A", to: "TNL-001" });
+  });
+
+  test("also drops the assumed reverse inferred from the removed edge", () => {
+    graph.loadFromEdges([], [{ from: "A", to: "TNL-001", pos: [1, 1], discoveredAt: new Date().toISOString() }]);
+    expect(graph.hasEdge("TNL-001", "A")).toBe(true); // the assumed reverse
+
+    graph.removeEdge("A", "TNL-001");
+
+    expect(graph.hasEdge("TNL-001", "A")).toBe(false);
+  });
+
+  test("leaves a separately-confirmed reverse edge alone", () => {
+    const now = new Date().toISOString();
+    graph.loadFromEdges(
+      [],
+      [
+        { from: "A", to: "TNL-001", pos: [1, 1], discoveredAt: now },
+        { from: "TNL-001", to: "A", pos: [2, 2], discoveredAt: now }, // real, not assumed
+      ]
+    );
+
+    graph.removeEdge("A", "TNL-001");
+
+    expect(graph.hasEdge("TNL-001", "A")).toBe(true);
+    expect(graph.getNextHop("TNL-001", "A").viaPos).toEqual([2, 2]);
+  });
+
+  test("does not remove a static edge, and does not call the API", () => {
+    graph.loadFromEdges([{ from: "A", to: "B", pos: [1, 1] }]);
+
+    const removed = graph.removeEdge("A", "B");
+
+    expect(removed).toBe(false);
+    expect(graph.hasEdge("A", "B")).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+
+  test("returns false for a nonexistent edge and does not call the API", () => {
+    graph.loadFromEdges([]);
+
+    const removed = graph.removeEdge("X", "Y");
+
+    expect(removed).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("ZoneGraph.load", () => {
   let originalFetch;
 

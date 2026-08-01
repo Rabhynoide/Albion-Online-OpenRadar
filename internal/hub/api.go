@@ -22,10 +22,11 @@ func (a *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", a.handleHealth)
 	mux.HandleFunc("GET /api/roads/edges", requireSecret(a.secret, a.handleList))
 	mux.HandleFunc("POST /api/roads/edges", requireSecret(a.secret, a.handleAdd))
+	mux.HandleFunc("DELETE /api/roads/edges", requireSecret(a.secret, a.handleDelete))
 }
 
 func (a *API) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, map[string]string{"status": "ok"})
 }
 
 func (a *API) handleList(w http.ResponseWriter, _ *http.Request) {
@@ -34,7 +35,7 @@ func (a *API) handleList(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "list: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, edges)
+	writeJSON(w, edges)
 }
 
 func (a *API) handleAdd(w http.ResponseWriter, r *http.Request) {
@@ -51,11 +52,28 @@ func (a *API) handleAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "persist: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, map[string]string{"status": "ok"})
 }
 
-func writeJSON(w http.ResponseWriter, code int, v any) {
+func (a *API) handleDelete(w http.ResponseWriter, r *http.Request) {
+	var body roads.EdgeRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.From == "" || body.To == "" {
+		http.Error(w, "from and to are required", http.StatusBadRequest)
+		return
+	}
+	if err := a.store.DeleteEdge(body.From, body.To); err != nil {
+		http.Error(w, "delete: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
+	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(v)
 }

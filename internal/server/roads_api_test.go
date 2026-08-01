@@ -122,6 +122,67 @@ func TestRoadsAPI_PostUpsertsExistingEdge(t *testing.T) {
 	}
 }
 
+func TestRoadsAPI_DeleteRemovesEdge(t *testing.T) {
+	dir := t.TempDir()
+	api := NewRoadsAPI(dir)
+	mux := newRoadsTestMux(api)
+
+	add, _ := json.Marshal(map[string]any{"from": "A", "to": "B"})
+	mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/roads/edges", bytes.NewReader(add)))
+
+	del, _ := json.Marshal(map[string]any{"from": "A", "to": "B"})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/roads/edges", bytes.NewReader(del)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("DELETE status %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	listRec := httptest.NewRecorder()
+	mux.ServeHTTP(listRec, httptest.NewRequest(http.MethodGet, "/api/roads/edges", http.NoBody))
+	var got []map[string]any
+	if err := json.NewDecoder(listRec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected edge to be gone, got %+v", got)
+	}
+}
+
+func TestRoadsAPI_DeleteMissingFromOrTo(t *testing.T) {
+	api := NewRoadsAPI(t.TempDir())
+	mux := newRoadsTestMux(api)
+
+	body, _ := json.Marshal(map[string]any{"from": "", "to": "B"})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/roads/edges", bytes.NewReader(body)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", rec.Code)
+	}
+}
+
+func TestRoadsAPI_DeleteMalformedBody(t *testing.T) {
+	api := NewRoadsAPI(t.TempDir())
+	mux := newRoadsTestMux(api)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/roads/edges", bytes.NewReader([]byte("{not json"))))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", rec.Code)
+	}
+}
+
+func TestRoadsAPI_DeleteNonexistentEdgeStillReturnsOK(t *testing.T) {
+	api := NewRoadsAPI(t.TempDir())
+	mux := newRoadsTestMux(api)
+
+	body, _ := json.Marshal(map[string]any{"from": "X", "to": "Y"})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/roads/edges", bytes.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200 (delete is idempotent)", rec.Code)
+	}
+}
+
 func TestRoadsAPI_ListGETOnlyRejectsPOST(t *testing.T) {
 	api := NewRoadsAPI(t.TempDir())
 	mux := newRoadsTestMux(api)
@@ -251,6 +312,59 @@ func TestRoadsAPI_PostForwardsToHub(t *testing.T) {
 	}
 	if len(got) != 1 || got[0]["from"] != "A" {
 		t.Fatalf("expected edge forwarded to hub, got %+v", got)
+	}
+}
+
+func TestRoadsAPI_DeleteForwardsToHub(t *testing.T) {
+	dir := t.TempDir()
+	hubSrv := fakeHub(t, "secret")
+	withHubConfig(t, dir, capture.HubConfig{Enabled: true, URL: hubSrv.URL, Secret: "secret"})
+
+	api := NewRoadsAPI(dir)
+	mux := newRoadsTestMux(api)
+
+	addBody := mustJSON(t, map[string]any{"from": "A", "to": "B"})
+	mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/roads/edges", bytes.NewReader(addBody)))
+
+	delBody := mustJSON(t, map[string]any{"from": "A", "to": "B"})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/roads/edges", bytes.NewReader(delBody)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("DELETE status %d", rec.Code)
+	}
+
+	// Query the Hub directly to confirm the edge was removed there too.
+	hubReq, _ := http.NewRequest(http.MethodGet, hubSrv.URL+"/api/roads/edges", http.NoBody)
+	hubReq.Header.Set(hub.SecretHeader, "secret")
+	resp, err := http.DefaultClient.Do(hubReq)
+	if err != nil {
+		t.Fatalf("query hub: %v", err)
+	}
+	defer resp.Body.Close()
+	var got []map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected edge removed from hub, got %+v", got)
+	}
+}
+
+func TestRoadsAPI_DeleteSucceedsLocallyEvenWhenHubUnreachable(t *testing.T) {
+	dir := t.TempDir()
+	withHubConfig(t, dir, capture.HubConfig{Enabled: true, URL: "http://127.0.0.1:1", Secret: "secret"})
+
+	api := NewRoadsAPI(dir)
+	mux := newRoadsTestMux(api)
+
+	addBody := mustJSON(t, map[string]any{"from": "A", "to": "B"})
+	mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/roads/edges", bytes.NewReader(addBody)))
+
+	delBody := mustJSON(t, map[string]any{"from": "A", "to": "B"})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/roads/edges", bytes.NewReader(delBody)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("DELETE status %d, want 200 even though hub is unreachable", rec.Code)
 	}
 }
 

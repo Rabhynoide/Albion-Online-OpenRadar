@@ -165,6 +165,40 @@ export class ZoneGraph {
     return { path: result.path, stale: result.usedStale, assumed: result.usedAssumed };
   }
 
+  // Removes a discovered edge the player says no longer exists (issue #5: a Road of Avalon
+  // reset to a different connection, and the 24h staleness window hasn't caught up yet).
+  // Static edges (the fixed open-world graph) are left alone - they don't expire and were
+  // never persisted through this API to begin with, so removing one in-memory would just be
+  // undone by the next load(). Also drops the assumed reverse if it was only ever inferred
+  // from this exact edge (a separately-confirmed reverse edge, source "discovered", is left
+  // alone). Returns whether an edge was actually removed.
+  removeEdge(from, to) {
+    const edges = this.adjacency.get(from);
+    const idx = edges ? edges.findIndex((e) => e.to === to && e.source !== "static") : -1;
+    if (idx === -1) return false;
+    edges.splice(idx, 1);
+
+    const reverseEdges = this.adjacency.get(to);
+    const revIdx = reverseEdges ? reverseEdges.findIndex((e) => e.to === from && e.source === "assumed") : -1;
+    if (revIdx !== -1) reverseEdges.splice(revIdx, 1);
+
+    try {
+      Promise.resolve(
+        fetch("/api/roads/edges", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ from, to }),
+        })
+      ).catch((error) => {
+        window.logger?.warn(CATEGORIES.GPS, "RoadRemoveFailed", { error: error?.message });
+      });
+    } catch (error) {
+      window.logger?.warn(CATEGORIES.GPS, "RoadRemoveFailed", { error: error?.message });
+    }
+
+    return true;
+  }
+
   // Called on every zone transition (see EventRouter.applyMapChange). Only real
   // cluster-to-cluster transitions that aren't already explainable by the static or
   // previously-discovered graph get recorded - that's exactly the "must be an Avalon

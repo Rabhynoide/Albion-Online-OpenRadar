@@ -51,6 +51,19 @@ func AddEdge(s *Store, from, to string, pos *[2]float64) {
 	s.Edges = append(s.Edges, Edge{From: from, To: to, Pos: pos, DiscoveredAt: now})
 }
 
+// RemoveEdge deletes the (From,To) edge from the store, if present - e.g. when a player
+// manually flags a discovered road as no longer valid (issue #5), rather than waiting for
+// the frontend's own staleness window to age it out. Reports whether an edge was removed.
+func RemoveEdge(s *Store, from, to string) bool {
+	for i := range s.Edges {
+		if s.Edges[i].From == from && s.Edges[i].To == to {
+			s.Edges = append(s.Edges[:i], s.Edges[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
 // ReadStore reads roads.json from appDir. A missing file is not an error; it returns
 // an empty Store, mirroring capture.ReadConfig's behavior for network.json.
 func ReadStore(appDir string) (Store, error) {

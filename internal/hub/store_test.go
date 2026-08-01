@@ -105,3 +105,44 @@ func TestStore_DistinctEdgesCoexist(t *testing.T) {
 		t.Fatalf("expected 2 distinct directed edges, got %+v", edges)
 	}
 }
+
+func TestStore_DeleteEdgeRemovesMatchingEdge(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.UpsertEdge("A", "B", nil); err != nil {
+		t.Fatalf("UpsertEdge: %v", err)
+	}
+	if err := s.UpsertEdge("A", "C", nil); err != nil {
+		t.Fatalf("UpsertEdge: %v", err)
+	}
+
+	if err := s.DeleteEdge("A", "B"); err != nil {
+		t.Fatalf("DeleteEdge: %v", err)
+	}
+
+	edges, err := s.ListEdges()
+	if err != nil {
+		t.Fatalf("ListEdges: %v", err)
+	}
+	if len(edges) != 1 || edges[0].To != "C" {
+		t.Fatalf("expected only A->C to remain, got %+v", edges)
+	}
+}
+
+func TestStore_DeleteEdgeMissingEdgeIsNoOp(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.UpsertEdge("A", "B", nil); err != nil {
+		t.Fatalf("UpsertEdge: %v", err)
+	}
+
+	if err := s.DeleteEdge("X", "Y"); err != nil {
+		t.Fatalf("DeleteEdge should not error on a nonexistent edge: %v", err)
+	}
+
+	edges, err := s.ListEdges()
+	if err != nil {
+		t.Fatalf("ListEdges: %v", err)
+	}
+	if len(edges) != 1 {
+		t.Fatalf("existing edge should be untouched, got %+v", edges)
+	}
+}
