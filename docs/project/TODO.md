@@ -43,6 +43,15 @@
 
 - [ ] Quality metrics dashboard.
 - [ ] Configuration file support beyond `network.json`.
+- [ ] **Auto-whitelist party members** (follow-up to PLAY-2/#36): `PartyJoined` (231),
+  `PartyPlayerJoined` (233), `PartyPlayerLeft` (235), `PartyDisbanded` (232) exist in
+  `EventCodes.js`/`eventcodes.go` but have never been captured or decoded - no
+  `PROTOCOL18_PARAM_LAYOUTS.md` section, no `EventRouter.js` case. Needs a pcap capture taken
+  while grouped (invite/accept, then a member leaving) to find which parameters carry the
+  player name/id before any handler can be written. Once decoded: track current party
+  members in-memory (session-only, not the persisted `ignoreList` - a party roster shouldn't
+  survive a page reload or outlive the party), consulted alongside the manual Ignore List in
+  `PlayersHandler.maybeAlert()`, `getFilteredPlayers()`, and `getThreatPlayers()`.
 
 ## Closed in v2.3 (in progress)
 
