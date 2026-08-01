@@ -150,6 +150,21 @@ export class ZoneGraph {
     };
   }
 
+  // Full zone-by-zone route (inclusive of both ends), for route overviews (e.g. an EVE-style
+  // hop-by-hop bar) rather than the single-next-step answer getNextHop gives. Kept as a
+  // separate method rather than folding the path into getNextHop's result: different callers
+  // want different things, and recomputing here is cheap (routes are short).
+  getFullPath(fromZoneId, toZoneId) {
+    if (!this.loaded || !fromZoneId || !toZoneId) return null;
+    if (fromZoneId === toZoneId) return { path: [fromZoneId], stale: false, assumed: false };
+
+    const result =
+      this._shortestPath(fromZoneId, toZoneId, false) ?? this._shortestPath(fromZoneId, toZoneId, true);
+    if (!result) return null;
+
+    return { path: result.path, stale: result.usedStale, assumed: result.usedAssumed };
+  }
+
   // Called on every zone transition (see EventRouter.applyMapChange). Only real
   // cluster-to-cluster transitions that aren't already explainable by the static or
   // previously-discovered graph get recorded - that's exactly the "must be an Avalon

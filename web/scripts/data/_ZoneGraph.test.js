@@ -267,3 +267,40 @@ describe("ZoneGraph.load", () => {
     expect(graph.getNextHop("A", "C")).toEqual({ nextZoneId: "B", viaPos: [1, 1], hops: 2, stale: false, assumed: false });
   });
 });
+
+describe("ZoneGraph.getFullPath", () => {
+  let graph;
+
+  beforeEach(() => {
+    graph = new ZoneGraph();
+  });
+
+  test("returns null before the graph is loaded", () => {
+    expect(graph.getFullPath("A", "B")).toBeNull();
+  });
+
+  test("returns a single-zone path when already at the destination", () => {
+    graph.loadFromEdges([{ from: "A", to: "B", pos: [1, 1] }]);
+    expect(graph.getFullPath("A", "A")).toEqual({ path: ["A"], stale: false, assumed: false });
+  });
+
+  test("returns the full zone sequence for a multi-hop static route", () => {
+    graph.loadFromEdges([
+      { from: "A", to: "B", pos: [1, 1] },
+      { from: "B", to: "C", pos: [2, 2] },
+      { from: "C", to: "D", pos: [3, 3] },
+    ]);
+    expect(graph.getFullPath("A", "D")).toEqual({ path: ["A", "B", "C", "D"], stale: false, assumed: false });
+  });
+
+  test("returns null when no route exists", () => {
+    graph.loadFromEdges([{ from: "A", to: "B", pos: [1, 1] }]);
+    expect(graph.getFullPath("A", "Z")).toBeNull();
+  });
+
+  test("flags stale/assumed when the reliable-only search fails and falls back", () => {
+    const oldDate = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+    graph.loadFromEdges([], [{ from: "A", to: "B", pos: [1, 1], discoveredAt: oldDate }]);
+    expect(graph.getFullPath("A", "B")).toEqual({ path: ["A", "B"], stale: true, assumed: false });
+  });
+});
