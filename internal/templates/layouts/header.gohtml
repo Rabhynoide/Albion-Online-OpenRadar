@@ -14,6 +14,15 @@
             <span id="wsStatusText" class="text-xs text-base-content/50 hidden sm:inline">Connecting...</span>
         </div>
 
+        <!-- Hub: backend-to-Hub connectivity (see internal/hub), distinct from wsStatusIndicator's
+             browser-to-radar-backend WebSocket. Hidden until the backend confirms a Hub is
+             configured at all - see the poll below. Visible on every page, not just Radar,
+             since it's a backend-level concern independent of what's currently displayed. -->
+        <div id="hubStatusIndicator" class="items-center gap-1.5 px-2.5 py-1 rounded-md bg-base-content/[0.02]" style="display:none;">
+            <span id="hubStatusDot" class="status status-neutral"></span>
+            <span id="hubStatusText" class="text-xs text-base-content/50 hidden sm:inline">Hub</span>
+        </div>
+
         <button id="pipToggleBtn" class="btn btn-primary btn-sm" disabled style="display:none;">
             <i id="pipIcon" data-lucide="picture-in-picture-2" class="w-4 h-4"></i>
             <span id="pipText" class="hidden sm:inline">PiP Mode</span>
@@ -141,6 +150,42 @@
     } else {
         updateVisibility();
     }
+
+    // Hub status: polls the radar backend (never the Hub directly - see internal/hub docs),
+    // since the backend already holds the Hub URL/secret and relays roads.json accordingly.
+    const hubIndicator = document.getElementById('hubStatusIndicator');
+    const hubDot = document.getElementById('hubStatusDot');
+    const hubText = document.getElementById('hubStatusText');
+
+    async function pollHubStatus() {
+        if (!hubIndicator || !hubDot || !hubText) return;
+        try {
+            const resp = await fetch('/api/hub/status');
+            const status = resp.ok ? await resp.json() : {enabled: false};
+
+            if (!status.enabled) {
+                hubIndicator.style.display = 'none';
+                return;
+            }
+            hubIndicator.style.display = 'flex';
+            hubDot.classList.remove('status-success', 'status-error', 'animate-pulse');
+            hubText.classList.remove('text-base-content/80', 'text-error');
+            if (status.connected) {
+                hubDot.classList.add('status-success', 'animate-pulse');
+                hubText.textContent = 'Hub';
+                hubText.classList.add('text-base-content/80');
+            } else {
+                hubDot.classList.add('status-error');
+                hubText.textContent = 'Hub offline';
+                hubText.classList.add('text-error');
+            }
+        } catch {
+            // Network hiccup polling our own backend - leave the indicator as it was.
+        }
+    }
+
+    pollHubStatus();
+    setInterval(pollHubStatus, 10000);
 })();
 </script>
 {{end}}

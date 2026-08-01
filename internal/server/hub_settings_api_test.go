@@ -168,3 +168,81 @@ func TestHubSettings_PostPreservesOtherConfigSections(t *testing.T) {
 		t.Error("Logging.ServerLogsEnabled was reset by unrelated hub POST")
 	}
 }
+
+func TestHubStatus_DisabledReportsEnabledFalse(t *testing.T) {
+	dir := t.TempDir()
+	if err := capture.WriteConfig(dir, capture.Config{
+		Hub: capture.HubConfig{Enabled: false, URL: "http://127.0.0.1:1"},
+	}); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	mux := newHubSettingsTestMux(dir)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/hub/status", http.NoBody)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["enabled"] != false || body["connected"] != false {
+		t.Errorf("unexpected body: %+v", body)
+	}
+}
+
+func TestHubStatus_EnabledAndReachableReportsConnected(t *testing.T) {
+	hubSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer hubSrv.Close()
+
+	dir := t.TempDir()
+	if err := capture.WriteConfig(dir, capture.Config{
+		Hub: capture.HubConfig{Enabled: true, URL: hubSrv.URL, Secret: "s"},
+	}); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	mux := newHubSettingsTestMux(dir)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/hub/status", http.NoBody)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["enabled"] != true || body["connected"] != true {
+		t.Errorf("unexpected body: %+v", body)
+	}
+}
+
+func TestHubStatus_EnabledButUnreachableReportsDisconnected(t *testing.T) {
+	dir := t.TempDir()
+	if err := capture.WriteConfig(dir, capture.Config{
+		Hub: capture.HubConfig{Enabled: true, URL: "http://127.0.0.1:1", Secret: "s"},
+	}); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	mux := newHubSettingsTestMux(dir)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/hub/status", http.NoBody)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["enabled"] != true || body["connected"] != false {
+		t.Errorf("unexpected body: %+v", body)
+	}
+}
