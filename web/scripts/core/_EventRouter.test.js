@@ -699,6 +699,33 @@ describe('EventRouter', () => {
         });
     });
 
+    describe('onEvent debug-log gating', () => {
+        // @verified: onEvent runs on every dispatched event (Move is the highest-volume one);
+        // the debug payload must not be built/logged at all when debug logging is off/filtered.
+        test('does not call logger.debug when shouldLog returns false', () => {
+            window.logger.shouldLog = vi.fn(() => false);
+
+            EventRouter.onEvent({0: 12345, 4: 100, 5: 200, 252: 3});
+
+            expect(window.logger.shouldLog).toHaveBeenCalledWith('DEBUG', 'NETWORK');
+            expect(window.logger.debug).not.toHaveBeenCalled();
+        });
+
+        test('still calls logger.debug when shouldLog returns true', () => {
+            window.logger.shouldLog = vi.fn(() => true);
+
+            EventRouter.onEvent({0: 12345, 4: 100, 5: 200, 252: 3});
+
+            expect(window.logger.debug).toHaveBeenCalled();
+        });
+
+        // @verified: no window.logger at all (e.g. logger.js not yet loaded) must not throw.
+        test('does not throw when window.logger is undefined', () => {
+            window.logger = undefined;
+            expect(() => EventRouter.onEvent({0: 12345, 4: 100, 5: 200, 252: 3})).not.toThrow();
+        });
+    });
+
     // -------------------------------------------------------------------------
     // onEvent Leave (1)
     // -------------------------------------------------------------------------

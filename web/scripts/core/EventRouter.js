@@ -361,29 +361,33 @@ export function onEvent(Parameters) {
     const id = parseInt(Parameters[0]);
     const eventCode = Parameters[252];
 
-    // Raw packet logging
-    window.logger?.debug(CATEGORIES.NETWORK, `Event_${eventCode}`, {
-        id,
-        eventCode,
-        allParameters: Parameters
-    });
-
-    // Detailed event logging (skip verbose events)
-    if (eventCode !== 91) {
-        const paramDetails = {};
-        for (let key in Parameters) {
-            if (Parameters.hasOwnProperty(key) && key !== '252' && key !== '0') {
-                paramDetails[`param[${key}]`] = Parameters[key];
-            }
-        }
-
-        window.logger?.debug(CATEGORIES.NETWORK, `Event_${eventCode}_ID_${id}`, {
+    // Raw + detailed packet logging - both payloads below are built even when the debug level
+    // is off/filtered, and this runs on every dispatched event (Move is the highest-volume
+    // one), so gate the (often-discarded) construction work on shouldLog() first.
+    if (window.logger?.shouldLog?.('DEBUG', CATEGORIES.NETWORK)) {
+        window.logger.debug(CATEGORIES.NETWORK, `Event_${eventCode}`, {
             id,
             eventCode,
-            eventName: getEventName(eventCode),
-            parameterCount: Object.keys(Parameters).length,
-            parameters: paramDetails
+            allParameters: Parameters
         });
+
+        // Detailed event logging (skip verbose events)
+        if (eventCode !== 91) {
+            const paramDetails = {};
+            for (let key in Parameters) {
+                if (Parameters.hasOwnProperty(key) && key !== '252' && key !== '0') {
+                    paramDetails[`param[${key}]`] = Parameters[key];
+                }
+            }
+
+            window.logger.debug(CATEGORIES.NETWORK, `Event_${eventCode}_ID_${id}`, {
+                id,
+                eventCode,
+                eventName: getEventName(eventCode),
+                parameterCount: Object.keys(Parameters).length,
+                parameters: paramDetails
+            });
+        }
     }
 
     const {

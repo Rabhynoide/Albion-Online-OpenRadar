@@ -299,6 +299,7 @@ export function destroyRadar() {
 
     Object.keys(handlers).forEach(k => handlers[k] = null);
     Object.keys(drawings).forEach(k => drawings[k] = null);
+    drawingUtils?.destroy();
     drawingUtils = null;
     map = null;
 

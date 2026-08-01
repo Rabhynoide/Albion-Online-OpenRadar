@@ -273,6 +273,28 @@ describe('MobsHandler', () => {
             expect(mobs[0].type).toBe(EnemyType.Enemy);
         });
 
+        // @verified: NewMobEvent fires on every mob spawn; the ultra-detailed
+        // "new_mob_all_params" debug payload must not be built/logged when debug logging is
+        // off/filtered (other, cheaper debug() calls in this method are unaffected by this gate).
+        test('does not log new_mob_all_params when shouldLog returns false', () => {
+            window.logger.shouldLog = vi.fn(() => false);
+            const p = normalizeParams({'0': 8003, '1': 9999, '2': 255, '7': [0, 0], '13': 500, '33': 0});
+
+            handler.NewMobEvent(p);
+
+            expect(window.logger.debug).not.toHaveBeenCalledWith(expect.anything(), 'new_mob_all_params', expect.anything());
+        });
+
+        test('still adds the mob and logs new_mob_all_params when shouldLog returns true', () => {
+            window.logger.shouldLog = vi.fn(() => true);
+            const p = normalizeParams({'0': 8004, '1': 9999, '2': 255, '7': [0, 0], '13': 500, '33': 0});
+
+            handler.NewMobEvent(p);
+
+            expect(window.logger.debug).toHaveBeenCalledWith(expect.anything(), 'new_mob_all_params', expect.anything());
+            expect(handler.getMobList()).toHaveLength(1);
+        });
+
         // @verified 2026-04-18: low healthNormalized < 10 is clamped to 255 at spawn.
         test('synthetic: spawn with parameters[2] < 10 clamps health to 255', () => {
             // synthetic: typeId 9999 is out of range; tests the fortNPC low-HP-spawn fix branch.
@@ -693,6 +715,29 @@ describe('MobsHandler', () => {
             handler.updateMobHealthRegen({'0': 9999, '2': 100, '3': 255});
             expect(handler.getMobList()).toHaveLength(0);
         });
+
+        // @verified: updateMobHealthRegen fires on every regen tick; the debug payload must
+        // not be built/logged at all when debug logging is off/filtered.
+        test('does not call logger.debug when shouldLog returns false', () => {
+            addMob(3002);
+            window.logger.debug.mockClear(); // discard addMob's own (unrelated) debug calls
+            window.logger.shouldLog = vi.fn(() => false);
+
+            handler.updateMobHealthRegen({'0': 3002, '2': 128, '3': 255});
+
+            expect(window.logger.debug).not.toHaveBeenCalled();
+        });
+
+        test('still updates health and logs when shouldLog returns true', () => {
+            addMob(3003);
+            window.logger.debug.mockClear(); // discard addMob's own (unrelated) debug calls
+            window.logger.shouldLog = vi.fn(() => true);
+
+            handler.updateMobHealthRegen({'0': 3003, '2': 128, '3': 255});
+
+            expect(window.logger.debug).toHaveBeenCalled();
+            expect(handler.getMobList().find(m => m.id === 3003).health).toBe(128);
+        });
     });
 
     describe('updateMobHealthBulk (event 7)', () => {
@@ -1020,6 +1065,83 @@ describe('MobsHandler', () => {
 
             handler.NewMobEvent(normalizeParams({'0': 9411, '1': 94, '2': 255, '7': [0, 0], '13': 1, '32': 'MISTS_SOLO_YELLOW', '33': 1}));
             expect(handler.mistList[1].enchant).toBe(1);
+        });
+    });
+
+    // The id->entity Map index (_mobsById/_mistsById) must stay in sync with
+    // mobsList/mistList at every point entities are added or removed, since the id-lookup
+    // methods (updateMobPosition, updateEnchantEvent, updateMobHealth*, debugLogMobById,
+    // updateMistPosition, updateMistEnchantmentLevel) all read the Map, not the array.
+    describe('id index stays in sync with mobsList/mistList', () => {
+        test('updateMobPosition is a no-op for an id removed via removeMob', () => {
+            const p = normalizeParams({'0': 5001, '1': 9999, '2': 255, '7': [0, 0], '13': 500, '33': 0});
+            handler.NewMobEvent(p);
+            handler.removeMob(5001);
+
+            handler.updateMobPosition(5001, 10, 20);
+
+            expect(handler.getMobList()).toHaveLength(0);
+        });
+
+        test('updateMobPosition is a no-op for an id dropped by cleanupStaleEntities', () => {
+            const p = normalizeParams({'0': 5002, '1': 9999, '2': 255, '7': [0, 0], '13': 500, '33': 0});
+            handler.NewMobEvent(p);
+            handler.mobsList[0].lastUpdateTime = Date.now() - 999999;
+
+            handler.cleanupStaleEntities(1000);
+            handler.updateMobPosition(5002, 10, 20);
+
+            expect(handler.getMobList()).toHaveLength(0);
+        });
+
+        test('updateMobPosition still finds a mob kept by cleanupStaleEntities', () => {
+            const p = normalizeParams({'0': 5003, '1': 9999, '2': 255, '7': [0, 0], '13': 500, '33': 0});
+            handler.NewMobEvent(p);
+
+            handler.cleanupStaleEntities(999999);
+            handler.updateMobPosition(5003, 10, 20);
+
+            expect(handler.getMobList()[0].posX).toBe(10);
+        });
+
+        test('enforceMaxSize drops the oldest mob from the index, keeps the newest reachable', () => {
+            const older = normalizeParams({'0': 5004, '1': 9999, '2': 255, '7': [0, 0], '13': 500, '33': 0});
+            handler.NewMobEvent(older);
+            handler.mobsList[0].lastUpdateTime = Date.now() - 10000;
+
+            const newer = normalizeParams({'0': 5005, '1': 9999, '2': 255, '7': [0, 0], '13': 500, '33': 0});
+            handler.NewMobEvent(newer);
+
+            handler.enforceMaxSize(1, 50);
+
+            handler.updateMobPosition(5004, 99, 99); // dropped - must be a no-op
+            handler.updateMobPosition(5005, 10, 20); // kept - must still apply
+            const mobs = handler.getMobList();
+            expect(mobs).toHaveLength(1);
+            expect(mobs[0].id).toBe(5005);
+            expect(mobs[0].posX).toBe(10);
+        });
+
+        test('updateMistPosition is a no-op for an id removed via removeMist', () => {
+            handler.NewMobEvent(normalizeParams({'0': 5006, '1': 94, '2': 255, '7': [0, 0], '13': 1, '32': 'MISTS_SOLO_YELLOW', '33': 0}));
+            handler.removeMist(5006);
+
+            handler.updateMistPosition(5006, 10, 20);
+
+            expect(handler.mistList).toHaveLength(0);
+        });
+
+        test('Clear() empties the id index too (re-adding the same id after Clear works)', () => {
+            const p = normalizeParams({'0': 5007, '1': 9999, '2': 255, '7': [0, 0], '13': 500, '33': 0});
+            handler.NewMobEvent(p);
+            handler.Clear();
+
+            handler.NewMobEvent(normalizeParams({'0': 5007, '1': 9999, '2': 255, '7': [7, 7], '13': 500, '33': 0}));
+            handler.updateMobPosition(5007, 42, 42);
+
+            const mobs = handler.getMobList();
+            expect(mobs).toHaveLength(1);
+            expect(mobs[0].posX).toBe(42);
         });
     });
 });

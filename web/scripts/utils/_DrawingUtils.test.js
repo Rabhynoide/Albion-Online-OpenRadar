@@ -362,3 +362,52 @@ describe('relativeScreenBearing / bearingToCompassLabel', () => {
     });
 });
 
+describe('DrawingUtils.getCanvasSize caching', () => {
+    let utils;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.logger = {debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn()};
+        document.body.innerHTML = '<canvas id="drawCanvas" width="500"></canvas>';
+    });
+
+    // @verified: getCanvasSize is called several times per drawn entity every frame - it must
+    // not re-query the DOM on every call, only re-read once per real size change.
+    test('reads the DOM once, then serves cached value on subsequent calls', () => {
+        utils = new DrawingUtils();
+        const canvas = document.getElementById('drawCanvas');
+        const spy = vi.spyOn(document, 'getElementById');
+
+        expect(utils.getCanvasSize()).toBe(500);
+        expect(spy).toHaveBeenCalledTimes(1);
+
+        canvas.width = 800; // simulate the DOM changing without a canvasSizeChanged event
+        expect(utils.getCanvasSize()).toBe(500); // still cached, doesn't see the DOM change
+        expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    test('refreshes the cache when canvasSizeChanged fires', () => {
+        utils = new DrawingUtils();
+        expect(utils.getCanvasSize()).toBe(500);
+
+        window.dispatchEvent(new CustomEvent('canvasSizeChanged', {detail: {size: 700}}));
+        expect(utils.getCanvasSize()).toBe(700);
+    });
+
+    test('destroy() removes the canvasSizeChanged listener', () => {
+        utils = new DrawingUtils();
+        utils.getCanvasSize();
+        utils.destroy();
+
+        window.dispatchEvent(new CustomEvent('canvasSizeChanged', {detail: {size: 999}}));
+        expect(utils.getCanvasSize()).toBe(500); // unaffected - listener was removed
+    });
+
+    test('falls back to settingCanvasSize when the canvas element is not in the DOM', () => {
+        document.body.innerHTML = '';
+        settingsSync.getNumber.mockReturnValue(321);
+        utils = new DrawingUtils();
+        expect(utils.getCanvasSize()).toBe(321);
+    });
+});
+

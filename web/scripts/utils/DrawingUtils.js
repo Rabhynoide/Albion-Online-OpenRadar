@@ -31,6 +31,28 @@ export class DrawingUtils {
         this.fontFamily = "Arial";
         this.textColor = "white";
         this.images = [];
+
+        // getCanvasSize() is on the hot path - every drawn entity queries it several times
+        // (marker size, health bar, font size, badge size), many times per frame. Cache it
+        // and only refresh on the canvasSizeChanged event (same event CanvasManager and
+        // PictureInPictureManager already listen to) instead of a getElementById() per call.
+        this._canvasSize = null;
+        this._onCanvasSizeChanged = null;
+        if (typeof window !== 'undefined') {
+            this._onCanvasSizeChanged = (e) => {
+                this._canvasSize = e.detail?.size ?? this._canvasSize;
+            };
+            window.addEventListener('canvasSizeChanged', this._onCanvasSizeChanged);
+        }
+    }
+
+    // Called from destroyRadar() to avoid leaking the canvasSizeChanged listener across
+    // radar init/destroy cycles (a fresh DrawingUtils is created on every initRadar()).
+    destroy() {
+        if (this._onCanvasSizeChanged) {
+            window.removeEventListener('canvasSizeChanged', this._onCanvasSizeChanged);
+            this._onCanvasSizeChanged = null;
+        }
     }
 
     getZoomLevel() {
@@ -46,9 +68,13 @@ export class DrawingUtils {
     getMarkerSize(baseSize) { return this.getScaledSize(baseSize) * this.getIconSizeMultiplier(); }
     getScaledFontSize(baseFontSize, minFontSize = 7) { return Math.max(minFontSize, baseFontSize * this.getZoomLevel() * this.getCanvasScale()); }
     getCanvasSize() {
+        if (this._canvasSize != null) return this._canvasSize;
         if (typeof document !== 'undefined') {
             const c = document.getElementById('drawCanvas');
-            if (c?.width) return c.width;
+            if (c?.width) {
+                this._canvasSize = c.width;
+                return this._canvasSize;
+            }
         }
         return settingsSync.getNumber('settingCanvasSize') || 500;
     }

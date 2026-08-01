@@ -88,6 +88,13 @@ export class PlayersHandler {
         this.localPlayer = new Player();
         this.lastFlashAt = 0;
         this.FLASH_DURATION_MS = 300;
+
+        // O(1) id -> Player index, kept in sync with playersList wherever players are
+        // added/removed below. playersList stays the authoritative, array-shaped source for
+        // everything else (getFilteredPlayers, rendering, existing external readers) - this
+        // index only exists to avoid an O(n) .find() per id lookup on the hot path (health,
+        // mount, item, and faction updates each do one per dispatch).
+        this._playersById = new Map();
     }
 
     playThreatSound() {
@@ -132,7 +139,7 @@ export class PlayersHandler {
         }
 
         if (items != null) {
-            const player = this.playersList.find(p => p.id === id);
+            const player = this._playersById.get(id);
             if (player) {
                 player.items = items;
                 player.touch();
@@ -153,13 +160,14 @@ export class PlayersHandler {
         const equipments = Parameters[40] || null;
         const spells = Parameters[43] || null;
 
-        const existingPlayer = this.playersList.find(player => player.id === id);
+        const existingPlayer = this._playersById.get(id);
         const parsedMaxPlayers = settingsSync.getNumber('settingMaxPlayersDisplay', 50);
         const maxPlayers = Math.min(100, parsedMaxPlayers);
 
         if (!existingPlayer && this.playersList.length < maxPlayers) {
             const player = new Player(0, 0, id, nickname, guildName, faction, allianceName, equipments, spells);
             this.playersList.push(player);
+            this._playersById.set(id, player);
         }
 
         const mapId = window.currentMapId;
@@ -208,7 +216,7 @@ export class PlayersHandler {
     }
 
     updatePlayerMounted(id, mounted) {
-        const player = this.playersList.find(p => p.id === id);
+        const player = this._playersById.get(id);
         if (player) {
             player.setMounted(mounted);
             player.touch();
@@ -217,6 +225,7 @@ export class PlayersHandler {
 
     removePlayer(id) {
         this.playersList = this.playersList.filter(player => player.id !== id);
+        this._playersById.delete(id);
     }
 
     updateLocalPlayerPosition(posX, posY) {
@@ -225,24 +234,27 @@ export class PlayersHandler {
     }
 
     UpdatePlayerHealth(Parameters) {
-        // 🐛 DEBUG: Log player health updates
-        const allParams = {};
-        for (let key in Parameters) {
-            if (Parameters.hasOwnProperty(key)) {
-                allParams[`param[${key}]`] = Parameters[key];
+        // 🐛 DEBUG: Log player health updates - gated on shouldLog() since this fires on every
+        // health update and the payload below is otherwise built for nothing when discarded.
+        if (window.logger?.shouldLog?.('DEBUG', CATEGORIES.PLAYERS)) {
+            const allParams = {};
+            for (let key in Parameters) {
+                if (Parameters.hasOwnProperty(key)) {
+                    allParams[`param[${key}]`] = Parameters[key];
+                }
             }
+
+            window.logger.debug(CATEGORIES.PLAYERS, 'health_update_detail', {
+                playerId: Parameters[0],
+                params2_currentHP: Parameters[2],
+                params3_maxHP: Parameters[3],
+                hpPercentage: Parameters[3] ? Math.round((Parameters[2] / Parameters[3]) * 100) + '%' : 'N/A',
+                allParameters: allParams,
+                parameterCount: Object.keys(Parameters).length
+            });
         }
 
-        window.logger?.debug(CATEGORIES.PLAYERS, 'health_update_detail', {
-            playerId: Parameters[0],
-            params2_currentHP: Parameters[2],
-            params3_maxHP: Parameters[3],
-            hpPercentage: Parameters[3] ? Math.round((Parameters[2] / Parameters[3]) * 100) + '%' : 'N/A',
-            allParameters: allParams,
-            parameterCount: Object.keys(Parameters).length
-        });
-
-        const uPlayer = this.playersList.find(player => player.id === Parameters[0]);
+        const uPlayer = this._playersById.get(Parameters[0]);
 
         if (!uPlayer) return;
 
@@ -252,7 +264,7 @@ export class PlayersHandler {
     }
 
     UpdatePlayerLooseHealth(Parameters) {
-        const uPlayer = this.playersList.find(player => player.id === Parameters[0]);
+        const uPlayer = this._playersById.get(Parameters[0]);
 
         if (!uPlayer) return;
 
@@ -263,10 +275,11 @@ export class PlayersHandler {
     Clear() {
         this.playersList = [];
         this.alreadyIgnoredPlayers = [];
+        this._playersById.clear();
     }
 
     updatePlayerFaction(id, newFaction) {
-        const player = this.playersList.find(p => p.id === id);
+        const player = this._playersById.get(id);
         if (!player) return;
 
         const wasHostile = player.isHostile();
@@ -311,6 +324,9 @@ export class PlayersHandler {
         this.playersList = this.playersList.filter(player =>
             (now - player.lastUpdateTime) < maxAgeMs
         );
+        // Infrequent (5min-scale sweep) - rebuilding the index here is far cheaper than a
+        // per-entity removal path just for this call site.
+        this._playersById = new Map(this.playersList.map(p => [p.id, p]));
 
         const removed = before - this.playersList.length;
         if (removed > 0) {
@@ -331,6 +347,7 @@ export class PlayersHandler {
         this.playersList.sort((a, b) => b.lastUpdateTime - a.lastUpdateTime);
         const removed = this.playersList.length - maxSize;
         this.playersList = this.playersList.slice(0, maxSize);
+        this._playersById = new Map(this.playersList.map(p => [p.id, p]));
 
         window.logger?.debug(CATEGORIES.PLAYERS, 'max_size_enforced', {removed});
         return removed;

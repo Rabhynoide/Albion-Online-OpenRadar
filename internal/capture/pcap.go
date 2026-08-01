@@ -47,6 +47,10 @@ type Capturer struct {
 
 	bytesReceived uint64
 
+	// recording lets processPacket (the true per-packet hot path) skip taking recordMu
+	// entirely in the common case (no recording active), instead of locking unconditionally
+	// on every single captured packet just to find out there's nothing to write.
+	recording         atomic.Bool
 	recordMu          sync.Mutex
 	recordFile        *os.File
 	recordWriter      *pcapgo.Writer
@@ -172,6 +176,7 @@ func (c *Capturer) StartRecording(dir string) error {
 
 	c.recordFile = f
 	c.recordWriter = w
+	c.recording.Store(true)
 	return nil
 }
 
@@ -183,6 +188,7 @@ func (c *Capturer) StopRecording() error {
 	if c.recordWriter == nil {
 		return nil
 	}
+	c.recording.Store(false)
 	err := c.recordFile.Close()
 	c.recordFile = nil
 	c.recordWriter = nil
@@ -197,16 +203,18 @@ func (c *Capturer) IsRecording() bool {
 }
 
 func (c *Capturer) processPacket(p gopacket.Packet) {
-	c.recordMu.Lock()
-	if c.recordWriter != nil {
-		if err := c.recordWriter.WritePacket(p.Metadata().CaptureInfo, p.Data()); err != nil {
-			n := atomic.AddUint64(&c.recordWriteErrors, 1)
-			if n%100 == 1 {
-				logger.PrintWarn("PKT", "pcap recorder write error: %v", err)
+	if c.recording.Load() {
+		c.recordMu.Lock()
+		if c.recordWriter != nil {
+			if err := c.recordWriter.WritePacket(p.Metadata().CaptureInfo, p.Data()); err != nil {
+				n := atomic.AddUint64(&c.recordWriteErrors, 1)
+				if n%100 == 1 {
+					logger.PrintWarn("PKT", "pcap recorder write error: %v", err)
+				}
 			}
 		}
+		c.recordMu.Unlock()
 	}
-	c.recordMu.Unlock()
 
 	udpLayer := p.Layer(layers.LayerTypeUDP)
 	if udpLayer == nil {

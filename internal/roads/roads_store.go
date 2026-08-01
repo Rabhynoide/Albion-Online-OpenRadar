@@ -28,6 +28,15 @@ type Store struct {
 	Edges []Edge `json:"edges"`
 }
 
+// EdgeRequest is the wire shape for submitting one edge, shared by internal/server's
+// RoadsAPI and internal/hub's API - both accept/relay the exact same
+// {from, to, pos} JSON body, so it lives here once instead of being redefined twice.
+type EdgeRequest struct {
+	From string      `json:"from"`
+	To   string      `json:"to"`
+	Pos  *[2]float64 `json:"pos"`
+}
+
 // AddEdge upserts a (From,To) edge into the store, refreshing DiscoveredAt/Pos when the
 // edge is already known rather than appending a duplicate.
 func AddEdge(s *Store, from, to string, pos *[2]float64) {

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nospy/albion-openradar/internal/capture"
@@ -39,6 +40,10 @@ type HTTPServer struct {
 	settingsAPI    *SettingsAPI
 	roadsAPI       *RoadsAPI
 	hubSettingsAPI *HubSettingsAPI
+	// assetCache holds already-gzip-compressed static assets (see readAssetCached). Only
+	// populated in prod mode - embed.FS content is immutable for the process lifetime, but dev
+	// mode's os.DirFS deliberately reads live from disk on every request for hot-reload.
+	assetCache sync.Map
 }
 
 // buildID fingerprints the embedded assets. It is empty for an unversioned build,
@@ -341,7 +346,7 @@ func (s *HTTPServer) gzipFSHandlerDirect(prefix string, fsys fs.FS) http.Handler
 		urlPath := strings.TrimPrefix(r.URL.Path, prefix)
 		acceptsGzip := strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
 
-		body, gzipped, err := readAsset(fsys, urlPath, acceptsGzip)
+		body, gzipped, err := s.readAssetCached(prefix, fsys, urlPath, acceptsGzip)
 		if err != nil {
 			http.NotFound(w, r)
 			return
@@ -356,6 +361,38 @@ func (s *HTTPServer) gzipFSHandlerDirect(prefix string, fsys fs.FS) http.Handler
 		s.setStaticCacheHeaders(w, "Accept-Encoding", gzipped)
 		http.ServeContent(w, r, urlPath, time.Time{}, bytes.NewReader(body))
 	})
+}
+
+type cachedAsset struct {
+	body    []byte
+	gzipped bool
+}
+
+// readAssetCached wraps readAsset with an in-memory cache keyed by prefix+urlPath+whether the
+// client accepts gzip (the same path can be served compressed or not to different clients).
+// Skipped entirely in dev mode: see the assetCache field doc on HTTPServer for why. Only
+// successful reads are cached, so a request for a nonexistent path never grows the cache.
+func (s *HTTPServer) readAssetCached(prefix string, fsys fs.FS, urlPath string, acceptsGzip bool) (body []byte, gzipped bool, err error) {
+	if s.devMode {
+		return readAsset(fsys, urlPath, acceptsGzip)
+	}
+
+	key := prefix + urlPath
+	if acceptsGzip {
+		key += "|gz"
+	}
+	if cached, ok := s.assetCache.Load(key); ok {
+		if c, ok := cached.(cachedAsset); ok {
+			return c.body, c.gzipped, nil
+		}
+	}
+
+	body, gzipped, err = readAsset(fsys, urlPath, acceptsGzip)
+	if err != nil {
+		return nil, false, err
+	}
+	s.assetCache.Store(key, cachedAsset{body: body, gzipped: gzipped})
+	return body, gzipped, nil
 }
 
 // readAsset prefers a pre-compressed sibling, then falls back to compressing on

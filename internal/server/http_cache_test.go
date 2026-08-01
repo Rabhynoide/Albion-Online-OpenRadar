@@ -350,3 +350,89 @@ func TestStaticAssetsAlwaysRevalidate(t *testing.T) {
 		})
 	}
 }
+
+// countingFS wraps an fs.FS and counts Open calls, so tests can prove readAssetCached
+// actually skips the underlying filesystem (and re-gzipping) on a cache hit.
+type countingFS struct {
+	inner fs.FS
+	opens map[string]int
+}
+
+func (c *countingFS) Open(name string) (fs.File, error) {
+	c.opens[name]++
+	return c.inner.Open(name)
+}
+
+func TestGzipAssetCache_ProdModeSkipsRecompressionOnSecondRequest(t *testing.T) {
+	log := logger.New(t.TempDir(), false)
+	tmpl, err := templates.NewEngineDev(testAppDir + "/internal/templates")
+	if err != nil {
+		t.Fatalf("template engine: %v", err)
+	}
+	counting := &countingFS{inner: zeroModTimeFS{os.DirFS(testAppDir + "/web/scripts")}, opens: map[string]int{}}
+
+	s := &HTTPServer{
+		mux:     http.NewServeMux(),
+		logger:  log,
+		scripts: counting,
+		tmpl:    tmpl,
+		version: "2.2.3",
+		assetID: buildID("2.2.3", "2026-07-09T10:00:00Z"),
+		devMode: false,
+	}
+	s.settingsAPI = NewSettingsAPI(t.TempDir(), log, nil, t.TempDir())
+	s.roadsAPI = NewRoadsAPI(t.TempDir())
+	s.hubSettingsAPI = NewHubSettingsAPI(t.TempDir())
+	s.setupRoutes()
+
+	headers := map[string]string{"Accept-Encoding": "gzip"}
+	first := do(s, http.MethodGet, "/scripts/core/DatabaseLoader.js", headers)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first request status = %d, want 200", first.Code)
+	}
+	opensAfterFirst := counting.opens["core/DatabaseLoader.js"]
+	if opensAfterFirst == 0 {
+		t.Fatal("expected the underlying fs.FS to be read on a cache miss")
+	}
+
+	second := do(s, http.MethodGet, "/scripts/core/DatabaseLoader.js", headers)
+	if second.Code != http.StatusOK {
+		t.Fatalf("second request status = %d, want 200", second.Code)
+	}
+	if got := counting.opens["core/DatabaseLoader.js"]; got != opensAfterFirst {
+		t.Errorf("underlying fs.FS opened %d more time(s) on a cache hit, want 0 more", got-opensAfterFirst)
+	}
+	if !bytes.Equal(first.Body.Bytes(), second.Body.Bytes()) {
+		t.Error("cached response body differs from the original")
+	}
+}
+
+func TestGzipAssetCache_DevModeAlwaysRereadsForHotReload(t *testing.T) {
+	log := logger.New(t.TempDir(), false)
+	tmpl, err := templates.NewEngineDev(testAppDir + "/internal/templates")
+	if err != nil {
+		t.Fatalf("template engine: %v", err)
+	}
+	counting := &countingFS{inner: os.DirFS(testAppDir + "/web/scripts"), opens: map[string]int{}}
+
+	s := &HTTPServer{
+		mux:     http.NewServeMux(),
+		logger:  log,
+		scripts: counting,
+		tmpl:    tmpl,
+		version: "2.2.3",
+		devMode: true,
+	}
+	s.settingsAPI = NewSettingsAPI(t.TempDir(), log, nil, t.TempDir())
+	s.roadsAPI = NewRoadsAPI(t.TempDir())
+	s.hubSettingsAPI = NewHubSettingsAPI(t.TempDir())
+	s.setupRoutes()
+
+	headers := map[string]string{"Accept-Encoding": "gzip"}
+	do(s, http.MethodGet, "/scripts/core/DatabaseLoader.js", headers)
+	do(s, http.MethodGet, "/scripts/core/DatabaseLoader.js", headers)
+
+	if got := counting.opens["core/DatabaseLoader.js"]; got < 2 {
+		t.Errorf("dev mode opened the file %d time(s) for 2 requests, want at least 2 (no caching)", got)
+	}
+}

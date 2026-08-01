@@ -916,5 +916,30 @@ describe('HarvestablesHandler', () => {
 
             expect(handler.getSize()).toBe(0);
         });
+
+        // @verified: removeNotInRange is called every frame (RadarRenderer.update(), 30fps)
+        // but harvestables are stationary, so re-filtering within RANGE_CHECK_INTERVAL_MS of
+        // the last real pass must be a no-op - this is the whole point of the throttle.
+        test('a second call within the throttle window is a no-op, even if it would have changed the result', () => {
+            vi.useFakeTimers();
+            try {
+                const far = {0: 604, 5: 14, 6: -1, 7: 4, 8: [200, 200], 10: 2, 11: 0};
+                handler.newHarvestableObject(604, far);
+                handler.removeNotInRange(0, 0); // first call always runs (throttle starts at 0)
+                expect(handler.getSize()).toBe(0);
+
+                // Re-add and immediately re-check: a real (non-throttled) pass would remove it
+                // again, but within the window the throttle must skip the filter entirely.
+                handler.newHarvestableObject(604, far);
+                handler.removeNotInRange(0, 0);
+                expect(handler.getSize()).toBe(1);
+
+                vi.advanceTimersByTime(251);
+                handler.removeNotInRange(0, 0);
+                expect(handler.getSize()).toBe(0);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
     });
 });

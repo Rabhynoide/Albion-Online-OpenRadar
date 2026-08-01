@@ -357,11 +357,16 @@ func (app *App) onPhotonParseError(reason string, payloadLen int) {
 
 func (app *App) onPhotonEvent(event *photon.EventData) {
 	photon.PostProcessEvent(event)
-	realCode := event.Parameters[252]
-	app.logger.Debug("EVENT_CAPTURE", fmt.Sprintf("Event_%v", realCode), map[string]interface{}{
-		"code":       realCode,
-		"paramCount": len(event.Parameters),
-	}, nil)
+	// Building the Sprintf + map below costs an allocation on every single Photon event
+	// (Move is by far the highest-volume one) - only worth paying when debug logging is
+	// actually enabled (off by default), which IsEnabled() lets us check first.
+	if app.logger.IsEnabled() {
+		realCode := event.Parameters[252]
+		app.logger.Debug("EVENT_CAPTURE", fmt.Sprintf("Event_%v", realCode), map[string]interface{}{
+			"code":       realCode,
+			"paramCount": len(event.Parameters),
+		}, nil)
+	}
 	app.wsHandler.BroadcastEvent(event)
 }
 

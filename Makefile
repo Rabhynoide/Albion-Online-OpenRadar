@@ -23,6 +23,11 @@ LDFLAGS := -s -w -X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)
 
 DIST := dist
 
+# Extra flags for the non-native platform's `docker build` (e.g. GitHub Actions cache:
+# --cache-from type=gha --cache-to type=gha,mode=max). Empty locally, where Docker's own
+# local layer cache already applies without any extra flags.
+DOCKER_BUILD_ARGS ?=
+
 .PHONY: help dev run css css-watch vendors test lint lint-fix clean \
         install-tools assets restore-assets refresh-assets \
         update-ao-data download-icons download-spells download-map \
@@ -117,7 +122,9 @@ lint-fix: ## Lint and auto-fix
 # ============================================================================
 
 assets: ## Install deps, build CSS, copy vendors, gzip embedded data
+ifndef CI
 	npm ci
+endif
 	npm run build
 	npx tsx tools/compress-game-data.ts web/ao-bin-dumps --delete-originals
 
@@ -173,7 +180,7 @@ ifeq ($(HOST_OS),linux)
 	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
 		go build -ldflags="$(LDFLAGS)" -o $(DIST)/OpenRadar-linux-amd64 ./cmd/radar
 else
-	docker build -f Dockerfile.linux -o $(DIST)/ \
+	docker build -f Dockerfile.linux -o $(DIST)/ $(DOCKER_BUILD_ARGS) \
 		--build-arg VERSION=$(VERSION) --build-arg BUILD_TIME=$(BUILD_TIME) .
 endif
 
@@ -182,7 +189,7 @@ ifneq (,$(findstring mingw,$(HOST_OS))$(findstring msys,$(HOST_OS)))
 	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
 		go build -ldflags="$(LDFLAGS)" -o $(DIST)/OpenRadar-windows-amd64.exe ./cmd/radar
 else
-	docker build -f Dockerfile.windows -o $(DIST)/ \
+	docker build -f Dockerfile.windows -o $(DIST)/ $(DOCKER_BUILD_ARGS) \
 		--build-arg VERSION=$(VERSION) --build-arg BUILD_TIME=$(BUILD_TIME) .
 endif
 

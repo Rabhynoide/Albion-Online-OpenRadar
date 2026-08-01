@@ -1,19 +1,12 @@
 name: Setup OpenRadar toolchain
-description: Checkout, Go, Node (LTS), libpcap, npm deps
-
-inputs:
-  fetch-depth:
-    description: Git history depth for checkout
-    required: false
-    default: "1"
+description: >-
+  Go, Node (LTS), libpcap, npm deps. Does NOT check out the repo - callers must do that
+  themselves first (required anyway for a local composite action to resolve at all, so a
+  second checkout in here would just be a redundant duplicate clone).
 
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v6
-      with:
-        fetch-depth: ${{ inputs.fetch-depth }}
-
     - uses: actions/setup-go@v6
       with:
         go-version-file: "go.mod"

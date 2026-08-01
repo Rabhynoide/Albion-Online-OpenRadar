@@ -26,6 +26,11 @@ export class RadarRenderer {
         this.lastFrameTime = 0;
         this.lastClusterUpdate = 0;
         this.cachedClusters = null;
+
+        // Computed once per frame in update() (which always runs before render() - see
+        // gameLoop()) and reused by renderStatsBox(), instead of each caller separately
+        // recomputing the same filtered player list.
+        this._filteredPlayers = [];
     }
 
     /**
@@ -125,11 +130,9 @@ export class RadarRenderer {
             );
         }
 
+        this._filteredPlayers = this.handlers.playersHandler?.getFilteredPlayers?.() ?? [];
         if (this.handlers.playersHandler && this.drawings.playersDrawing) {
-            this.drawings.playersDrawing.interpolate(
-                this.handlers.playersHandler.getFilteredPlayers(),
-                this.lpX, this.lpY, t
-            );
+            this.drawings.playersDrawing.interpolate(this._filteredPlayers, this.lpX, this.lpY, t);
         }
 
         if (this.handlers.chestsHandler && this.drawings.chestsDrawing) {
@@ -248,12 +251,8 @@ export class RadarRenderer {
                 );
             }
 
-            if (this.drawings.playersDrawing && this.handlers.playersHandler) {
-                this.drawings.playersDrawing.invalidate(
-                    context,
-                    this.handlers.playersHandler.getFilteredPlayers()
-                );
-            }
+            // Players are never drawn here: PlayersDrawing has no invalidate() - live positions
+            // are XOR-encrypted and not decryptable client-side (see PLAYER_POSITIONS_MITM.md).
 
             if (this.drawings.wispCageDrawing && this.handlers.wispCageHandler) {
                 this.drawings.wispCageDrawing.draw(
@@ -415,7 +414,7 @@ export class RadarRenderer {
      * Render stats box (top right, conditional based on settings)
      */
     renderStatsBox(ctx) {
-        const playerCount = this.handlers.playersHandler?.getFilteredPlayers?.()?.length ?? 0;
+        const playerCount = this._filteredPlayers.length;
         const resourceCount = this.drawings.harvestablesDrawing?.lastVisibleCount ?? 0;
         const mobCount = this.drawings.mobsDrawing?.lastVisibleCount ?? 0;
 

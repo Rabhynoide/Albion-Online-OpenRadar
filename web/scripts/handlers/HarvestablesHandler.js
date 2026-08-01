@@ -1,5 +1,10 @@
 import {CATEGORIES} from "../constants/LoggerConstants.js";
 
+// removeNotInRange is throttled to this interval (see HarvestablesHandler constructor) -
+// harvestables don't move, so re-filtering by distance more often than the player can
+// meaningfully cover ground is wasted work.
+const RANGE_CHECK_INTERVAL_MS = 250;
+
 const HarvestableType =
 {
     Fiber: 'Fiber',
@@ -74,6 +79,11 @@ export class HarvestablesHandler
         for (let i = 1; i <= 8; i++) {
             this.stats.byTier[i] = { detected: 0, harvested: 0 };
         }
+
+        // removeNotInRange is called every frame (RadarRenderer.update(), 30fps) but
+        // harvestables are stationary - only the player's position makes the result change,
+        // so throttling how often it actually re-filters skips redundant work most frames.
+        this._lastRangeCheckAt = 0;
     }
 
     addHarvestable(id, type, tier, posX, posY, charges, size, mobileTypeId = null)
@@ -371,11 +381,13 @@ export class HarvestablesHandler
 
     removeNotInRange(lpX, lpY)
     {
-        this.harvestableList = this.harvestableList.filter(
-            (x) => this.calculateDistance(lpX, lpY, x.posX, x.posY) <= 80
-        );
+        const now = Date.now();
+        if (now - this._lastRangeCheckAt < RANGE_CHECK_INTERVAL_MS) return;
+        this._lastRangeCheckAt = now;
 
-        this.harvestableList = this.harvestableList.filter(item => item.size !== undefined);
+        this.harvestableList = this.harvestableList.filter(
+            (x) => x.size !== undefined && this.calculateDistance(lpX, lpY, x.posX, x.posY) <= 80
+        );
     }
 
     calculateDistance(lpX, lpY, posX, posY)

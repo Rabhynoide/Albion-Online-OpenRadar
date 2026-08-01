@@ -10,15 +10,13 @@ export class PlayersDrawing extends DrawingUtils {
         this.itemsInfo = newData;
     }
 
+    // Positions are XOR-encrypted and not decryptable client-side (see
+    // PLAYER_POSITIONS_MITM.md), so there is deliberately no invalidate()/draw step here -
+    // interpolate() still runs (see RadarRenderer.update()) since other code (player list
+    // distance, stats) may read the interpolated hX/hY, but nothing ever paints from it.
     interpolate(players, lpX, lpY, t) {
         for (const playerOne of players) {
             this.interpolateEntity(playerOne, lpX, lpY, t);
         }
-    }
-
-    invalidate(_context, _players) {
-        // Disabled: positions are encrypted, all players render at (0,0)
-        // TODO: Re-enable when position decryption is implemented
-        return;
     }
 }

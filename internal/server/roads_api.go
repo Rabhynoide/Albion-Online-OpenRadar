@@ -79,14 +79,8 @@ func (a *RoadsAPI) fetchHubEdges(cfg capture.HubConfig) ([]roads.Edge, bool) {
 	return edges, true
 }
 
-type addEdgeBody struct {
-	From string      `json:"from"`
-	To   string      `json:"to"`
-	Pos  *[2]float64 `json:"pos"`
-}
-
 func (a *RoadsAPI) handleAdd(w http.ResponseWriter, r *http.Request) {
-	var body addEdgeBody
+	var body roads.EdgeRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid body: "+err.Error(), http.StatusBadRequest)
 		return
@@ -112,7 +106,7 @@ func (a *RoadsAPI) handleAdd(w http.ResponseWriter, r *http.Request) {
 // forwardToHub best-effort mirrors a locally-persisted edge to the configured Hub.
 // Failures are not surfaced to the browser: the local write already succeeded, and
 // the next successful GET (local or Hub) will still reflect this edge.
-func (a *RoadsAPI) forwardToHub(cfg capture.HubConfig, body addEdgeBody) {
+func (a *RoadsAPI) forwardToHub(cfg capture.HubConfig, body roads.EdgeRequest) {
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return

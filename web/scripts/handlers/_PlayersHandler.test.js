@@ -344,6 +344,27 @@ describe('PlayersHandler', () => {
         test('synthetic: unknown id is no-op', () => {
             expect(() => handler.UpdatePlayerHealth({0: 9999, 2: 500, 3: 1000})).not.toThrow();
         });
+
+        // @verified: UpdatePlayerHealth fires on every health update; the debug payload must
+        // not be built/logged at all when debug logging is off/filtered.
+        test('does not call logger.debug when shouldLog returns false', () => {
+            window.logger.shouldLog = vi.fn(() => false);
+            handler.handleNewPlayerEvent(1, {1: 'Bob', 8: '', 53: 0, 51: null, 40: [], 43: []});
+
+            handler.UpdatePlayerHealth({0: 1, 2: 850, 3: 1000});
+
+            expect(window.logger.debug).not.toHaveBeenCalled();
+        });
+
+        test('still updates health and logs when shouldLog returns true', () => {
+            window.logger.shouldLog = vi.fn(() => true);
+            handler.handleNewPlayerEvent(1, {1: 'Bob', 8: '', 53: 0, 51: null, 40: [], 43: []});
+
+            handler.UpdatePlayerHealth({0: 1, 2: 850, 3: 1000});
+
+            expect(window.logger.debug).toHaveBeenCalled();
+            expect(handler.playersList[0].currentHealth).toBe(850);
+        });
     });
 
     describe('UpdatePlayerLooseHealth (event 6)', () => {
@@ -617,6 +638,65 @@ describe('PlayersHandler', () => {
             handler.handleNewPlayerEvent(2, {1: 'Hostile', 8: '', 53: 255, 51: null, 40: [], 43: []});
 
             expect(handler.getThreatPlayers()).toHaveLength(2);
+        });
+    });
+
+    // The id->Player Map index (_playersById) must stay in sync with playersList at every
+    // point players are added or removed, since the id-lookup methods (UpdatePlayerHealth,
+    // UpdatePlayerLooseHealth, updatePlayerMounted, updatePlayerFaction, updateItems) all read
+    // the Map, not the array.
+    describe('id index stays in sync with playersList', () => {
+        test('UpdatePlayerHealth is a no-op for an id removed via removePlayer', () => {
+            handler.handleNewPlayerEvent(6001, {1: 'Bob', 8: '', 53: 0, 51: null, 40: [], 43: []});
+            handler.removePlayer(6001);
+
+            handler.UpdatePlayerHealth({0: 6001, 2: 850, 3: 1000});
+
+            expect(handler.playersList).toHaveLength(0);
+        });
+
+        test('UpdatePlayerHealth is a no-op for an id dropped by cleanupStaleEntities', () => {
+            handler.handleNewPlayerEvent(6002, {1: 'Bob', 8: '', 53: 0, 51: null, 40: [], 43: []});
+            handler.playersList[0].lastUpdateTime = Date.now() - 999999;
+
+            handler.cleanupStaleEntities(1000);
+            handler.UpdatePlayerHealth({0: 6002, 2: 850, 3: 1000});
+
+            expect(handler.playersList).toHaveLength(0);
+        });
+
+        test('UpdatePlayerHealth still finds a player kept by cleanupStaleEntities', () => {
+            handler.handleNewPlayerEvent(6003, {1: 'Bob', 8: '', 53: 0, 51: null, 40: [], 43: []});
+
+            handler.cleanupStaleEntities(999999);
+            handler.UpdatePlayerHealth({0: 6003, 2: 850, 3: 1000});
+
+            expect(handler.playersList[0].currentHealth).toBe(850);
+        });
+
+        test('enforceMaxSize drops the oldest player from the index, keeps the newest reachable', () => {
+            handler.handleNewPlayerEvent(6004, {1: 'Old', 8: '', 53: 0, 51: null, 40: [], 43: []});
+            handler.playersList[0].lastUpdateTime = Date.now() - 10000;
+            handler.handleNewPlayerEvent(6005, {1: 'New', 8: '', 53: 0, 51: null, 40: [], 43: []});
+
+            handler.enforceMaxSize(1);
+
+            handler.UpdatePlayerHealth({0: 6004, 2: 1, 3: 100}); // dropped - must be a no-op
+            handler.UpdatePlayerHealth({0: 6005, 2: 850, 3: 1000}); // kept - must still apply
+            expect(handler.playersList).toHaveLength(1);
+            expect(handler.playersList[0].id).toBe(6005);
+            expect(handler.playersList[0].currentHealth).toBe(850);
+        });
+
+        test('Clear() empties the id index too (re-adding the same id after Clear works)', () => {
+            handler.handleNewPlayerEvent(6006, {1: 'Bob', 8: '', 53: 0, 51: null, 40: [], 43: []});
+            handler.Clear();
+
+            handler.handleNewPlayerEvent(6006, {1: 'Bob', 8: '', 53: 0, 51: null, 40: [], 43: []});
+            handler.UpdatePlayerHealth({0: 6006, 2: 500, 3: 1000});
+
+            expect(handler.playersList).toHaveLength(1);
+            expect(handler.playersList[0].currentHealth).toBe(500);
         });
     });
 });

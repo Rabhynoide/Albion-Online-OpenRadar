@@ -95,6 +95,15 @@ export class MobsHandler {
     constructor() {
         this.mobsList = [];
         this.mistList = [];
+
+        // O(1) id -> entity index, kept in sync with mobsList/mistList wherever entities are
+        // added/removed below. mobsList/mistList stay the authoritative, array-shaped source
+        // for everything else (rendering, stats, iteration, existing external readers) - this
+        // index only exists to avoid an O(n) .find() per id lookup on the hot path (every
+        // Move/health/enchant event does at least one, sometimes several, per dispatch, against
+        // a list that can hold up to 500 mobs).
+        this._mobsById = new Map();
+        this._mistsById = new Map();
     }
 
     /**
@@ -119,22 +128,26 @@ export class MobsHandler {
             const mobId = parseInt(parameters[0]);
             const typeId = parseInt(parameters[1]);
 
-            // 🐛 DEBUG ULTRA-DETAILED: Log ALL parameters to identify patterns
-            const allParams = {};
-            for (let key in parameters) {
-                if (parameters.hasOwnProperty(key)) {
-                    allParams[`param[${key}]`] = parameters[key];
+            // 🐛 DEBUG ULTRA-DETAILED: Log ALL parameters to identify patterns - gated on
+            // shouldLog() since NewMobEvent fires per-mob-spawn and this payload is otherwise
+            // built for nothing when discarded.
+            if (window.logger?.shouldLog?.('DEBUG', CATEGORIES.MOBS)) {
+                const allParams = {};
+                for (let key in parameters) {
+                    if (parameters.hasOwnProperty(key)) {
+                        allParams[`param[${key}]`] = parameters[key];
+                    }
                 }
-            }
 
-            window.logger?.debug(CATEGORIES.MOBS, 'new_mob_all_params', {
-                mobId,
-                typeId,
-                posX: parameters[8],
-                posY: parameters[9],
-                allParameters: allParams,
-                parameterCount: Object.keys(parameters).length
-            });
+                window.logger.debug(CATEGORIES.MOBS, 'new_mob_all_params', {
+                    mobId,
+                    typeId,
+                    posX: parameters[8],
+                    posY: parameters[9],
+                    allParameters: allParams,
+                    parameterCount: Object.keys(parameters).length
+                });
+            }
 
             const loc = parameters[7] || [0, 0];
             const posX = this.normalizeNumber(loc[0], 0);
@@ -178,7 +191,7 @@ export class MobsHandler {
     }
 
     AddEnemy(id, typeId, posX, posY, healthNormalized, maxHealth, enchant, rarity) {
-        if (this.mobsList.some(m => m.id === id)) return;
+        if (this._mobsById.has(id)) return;
 
         // Fix for fort/dungeon NPCs spawning with low HP value (params[2]=5)
         // If healthNormalized is very low (< 10), it's likely a spawn default value, not real HP
@@ -260,11 +273,13 @@ export class MobsHandler {
         mob.identified = !!mob.name && hasKnownInfo;
 
         this.mobsList.push(mob);
+        this._mobsById.set(id, mob);
     }
 
     removeMob(id) {
         const before = this.mobsList.length;
         this.mobsList = this.mobsList.filter(m => m.id !== id);
+        this._mobsById.delete(id);
         const after = this.mobsList.length;
 
         // 🐛 DEBUG (filtered by categoryMobs setting) - Detailed mob removal
@@ -278,7 +293,7 @@ export class MobsHandler {
     }
 
     updateMobPosition(id, posX, posY) {
-        const m = this.mobsList.find(x => x.id === id);
+        const m = this._mobsById.get(id);
         if (m) {
             m.posX = posX;
             m.posY = posY;
@@ -289,7 +304,7 @@ export class MobsHandler {
     updateEnchantEvent(parameters) {
         const mobId = parameters[0];
         const enchantmentLevel = parameters[1];
-        const found = this.mobsList.find(m => m.id === mobId);
+        const found = this._mobsById.get(mobId);
         if (found) {
             found.enchantmentLevel = enchantmentLevel;
             found.touch();
@@ -298,7 +313,7 @@ export class MobsHandler {
 
     // 🐛 DEBUG: Find and log mob info by ID (for HP tracking)
     debugLogMobById(id) {
-        const mob = this.mobsList.find(m => m.id === id);
+        const mob = this._mobsById.get(id);
         if (mob) {
             return `TypeID=${mob.typeId} Type=${this.getEnemyTypeName(mob.type)} HP=${mob.getCurrentHP()}/${mob.maxHealth} Name=${mob.name || 'Unknown'}`;
         }
@@ -320,7 +335,7 @@ export class MobsHandler {
         const attackerId = parameters[6];
 
         // Find mob in list
-        const mob = this.mobsList.find(m => m.id === mobId);
+        const mob = this._mobsById.get(mobId);
         if (!mob) return; // Not a mob (probably player)
 
         // 🐛 DEBUG: Log health update
@@ -359,28 +374,31 @@ export class MobsHandler {
      */
     updateMobHealthRegen(parameters) {
         const mobId = parseInt(parameters[0]);
-        const mob = this.mobsList.find(m => m.id === mobId);
+        const mob = this._mobsById.get(mobId);
 
-        // 🐛 DEBUG: Log RegenerationHealthChanged avec analyse HP
-        const allParams = {};
-        for (let key in parameters) {
-            if (parameters.hasOwnProperty(key)) {
-                allParams[`param[${key}]`] = parameters[key];
+        // 🐛 DEBUG: Log RegenerationHealthChanged avec analyse HP - gated on shouldLog() since
+        // this fires on every regen tick and the payload below is otherwise built for nothing.
+        if (window.logger?.shouldLog?.('DEBUG', CATEGORIES.MOBS)) {
+            const allParams = {};
+            for (let key in parameters) {
+                if (parameters.hasOwnProperty(key)) {
+                    allParams[`param[${key}]`] = parameters[key];
+                }
             }
-        }
 
-        window.logger?.debug(CATEGORIES.MOBS, 'regen_health_detail', {
-            mobId,
-            eventCode: 91,
-            mobFound: !!mob,
-            mobTypeId: mob ? mob.typeId : null,
-            mobName: mob ? mob.name : null,
-            params2_currentHP: parameters[2],
-            params3_maxHP: parameters[3],
-            hpPercentage: parameters[3] ? Math.round((parameters[2] / parameters[3]) * 100) + '%' : 'N/A',
-            allParameters: allParams,
-            parameterCount: Object.keys(parameters).length
-        });
+            window.logger.debug(CATEGORIES.MOBS, 'regen_health_detail', {
+                mobId,
+                eventCode: 91,
+                mobFound: !!mob,
+                mobTypeId: mob ? mob.typeId : null,
+                mobName: mob ? mob.name : null,
+                params2_currentHP: parameters[2],
+                params3_maxHP: parameters[3],
+                hpPercentage: parameters[3] ? Math.round((parameters[2] / parameters[3]) * 100) + '%' : 'N/A',
+                allParameters: allParams,
+                parameterCount: Object.keys(parameters).length
+            });
+        }
 
         // Update normalized health directly if mob exists
         if (mob) {
@@ -430,20 +448,23 @@ export class MobsHandler {
     }
 
     AddMist(id, posX, posY, name, enchant) {
-        const existing = this.mistList.find(m => m.id === id);
+        const existing = this._mistsById.get(id);
         if (existing) {
             existing.touch();
             return;
         }
-        this.mistList.push(new Mist(id, posX, posY, name, enchant));
+        const mist = new Mist(id, posX, posY, name, enchant);
+        this.mistList.push(mist);
+        this._mistsById.set(id, mist);
     }
 
     removeMist(id) {
         this.mistList = this.mistList.filter(m => m.id !== id);
+        this._mistsById.delete(id);
     }
 
     updateMistPosition(id, posX, posY) {
-        const mist = this.mistList.find(m => m.id === id);
+        const mist = this._mistsById.get(id);
         if (mist) {
             mist.posX = posX;
             mist.posY = posY;
@@ -452,7 +473,7 @@ export class MobsHandler {
     }
 
     updateMistEnchantmentLevel(id, enchantmentLevel) {
-        const mist = this.mistList.find(m => m.id === id);
+        const mist = this._mistsById.get(id);
         if (mist) {
             mist.enchant = enchantmentLevel;
             mist.touch();
@@ -462,6 +483,8 @@ export class MobsHandler {
     Clear() {
         this.mobsList = [];
         this.mistList = [];
+        this._mobsById.clear();
+        this._mistsById.clear();
     }
 
     /**
@@ -608,6 +631,10 @@ export class MobsHandler {
         this.mistList = this.mistList.filter(entity =>
             (now - entity.lastUpdateTime) < maxAgeMs
         );
+        // Infrequent (60s sweep, see Utils.js) - rebuilding the index here is far cheaper
+        // than keeping a per-entity removal path just for this call site.
+        this._mobsById = new Map(this.mobsList.map(m => [m.id, m]));
+        this._mistsById = new Map(this.mistList.map(m => [m.id, m]));
 
         const removedMobs = beforeMobs - this.mobsList.length;
         const removedMists = beforeMists - this.mistList.length;
@@ -631,6 +658,7 @@ export class MobsHandler {
             this.mobsList.sort((a, b) => b.lastUpdateTime - a.lastUpdateTime);
             const removed = this.mobsList.length - maxMobs;
             this.mobsList = this.mobsList.slice(0, maxMobs);
+            this._mobsById = new Map(this.mobsList.map(m => [m.id, m]));
             totalRemoved += removed;
             window.logger?.debug(CATEGORIES.MOBS, 'max_mobs_enforced', {removed});
         }
@@ -639,6 +667,7 @@ export class MobsHandler {
             this.mistList.sort((a, b) => b.lastUpdateTime - a.lastUpdateTime);
             const removed = this.mistList.length - maxMists;
             this.mistList = this.mistList.slice(0, maxMists);
+            this._mistsById = new Map(this.mistList.map(m => [m.id, m]));
             totalRemoved += removed;
             window.logger?.debug(CATEGORIES.MOBS, 'max_mists_enforced', {removed});
         }
