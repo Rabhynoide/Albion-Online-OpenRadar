@@ -6,6 +6,7 @@ import {OperationCodes} from '../utils/OperationCodes.js';
 import {CATEGORIES} from '../constants/LoggerConstants.js';
 import zonesDatabase from '../data/ZonesDatabase.js';
 import zoneGraph from '../data/ZoneGraph.js';
+import partyRoster from '../data/PartyRoster.js';
 
 function syncMapIsBZ() {
     if (!map) return;
@@ -537,6 +538,20 @@ export function onEvent(Parameters) {
             playersHandler.updatePlayerFaction(Parameters[0], Parameters[1]);
             break;
 
+        // Party roster (issue #3: auto-exclude party members from hostile alerts) - see
+        // PartyRoster.js and docs/technical/PROTOCOL18_PARAM_LAYOUTS.md's Party events section.
+        case EventCodes.PartyJoined:
+            partyRoster.handlePartyJoined(Parameters);
+            break;
+
+        case EventCodes.PartyPlayerLeft:
+            partyRoster.handlePartyPlayerLeft(Parameters);
+            break;
+
+        case EventCodes.PartyDisbanded:
+            partyRoster.handlePartyDisbanded();
+            break;
+
         // upstream 590 = UpdateEnemyWarBannerActive; local dispatch labels it "key_sync", semantics diverge.
         case 590:
             window.logger?.debug(CATEGORIES.NETWORK, 'key_sync', {Parameters});
@@ -609,6 +624,7 @@ export function reset() {
     pendingMistChoice = null;
     lastActiveMistOverride = null;
     mapChangeListeners = [];
+    partyRoster.reset();
 
     // Clear references to prevent memory leaks
     handlers = null;

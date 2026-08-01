@@ -9,7 +9,7 @@
 |---|---|---|
 | Resources | working | database-driven, cleanup, filtering, T1-T8 with enchantments, render-time gate (#82) |
 | Mobs | working | OFFSET=16 confirmed (#93), 9 classifications, color-coded threat |
-| Players | working | faction detection, zone-aware alerts (unmapped zones no longer suppress hostile alerts, #65), ignore list actually respected by alerts/radar/threat-border (#36), Mist instance pvpType inherits parent (#103) |
+| Players | working | faction detection, zone-aware alerts (unmapped zones no longer suppress hostile alerts, #65), ignore list actually respected by alerts/radar/threat-border (#36), Mist instance pvpType inherits parent (#103), party members auto-excluded from alerts/radar/threat-border (#3) |
 | Zones | working | PvP type detection, threat logic |
 | Mists | working | portals, feu follets, wisp cages (see `docs/technical/MISTS_DETECTION.md`) |
 | Dungeons | working | per-type filters Solo, Group (Duo), Corrupted, Hellgate validated end to end. Per-enchant filters E0-E4 work across every family. Five group families unblocked by #78 (T6_MORGANA, T6_KEEPER, T6_UNDEAD, T5_PORTAL_ROYAL_SOLO, T6_PORTAL). Avalonian dungeons, per-difficulty filters, and a dungeons database stay open. |
@@ -43,15 +43,6 @@
 
 - [ ] Quality metrics dashboard.
 - [ ] Configuration file support beyond `network.json`.
-- [ ] **Auto-whitelist party members** (follow-up to PLAY-2/#36): `PartyJoined` (231),
-  `PartyPlayerJoined` (233), `PartyPlayerLeft` (235), `PartyDisbanded` (232) exist in
-  `EventCodes.js`/`eventcodes.go` but have never been captured or decoded - no
-  `PROTOCOL18_PARAM_LAYOUTS.md` section, no `EventRouter.js` case. Needs a pcap capture taken
-  while grouped (invite/accept, then a member leaving) to find which parameters carry the
-  player name/id before any handler can be written. Once decoded: track current party
-  members in-memory (session-only, not the persisted `ignoreList` - a party roster shouldn't
-  survive a page reload or outlive the party), consulted alongside the manual Ignore List in
-  `PlayersHandler.maybeAlert()`, `getFilteredPlayers()`, and `getThreatPlayers()`.
 
 ## Closed in v2.3 (in progress)
 
@@ -71,6 +62,16 @@
   a different connection. Added a "Remove this route" button on the sidebar GPS widget
   (`ZoneGraph.removeEdge()`, `DELETE /api/roads/edges`, forwarded to the Hub if configured) -
   see `docs/technical/AVALON_ROADS_GPS.md`'s "Manual removal" section.
+- **PLAY-3** (#3, "Whitelist joueurs friendly"): party members are now auto-excluded from
+  hostile-player alerts, the radar player list, and the pulsing threat border - the same
+  exclusion the manual Ignore List already provided (PLAY-2), but detected live instead of
+  curated by hand. Decoded the previously-uncaptured Photon Party event family (231/232/235)
+  from a real capture - see `docs/technical/PROTOCOL18_PARAM_LAYOUTS.md`'s "Party events"
+  section. New `web/scripts/data/PartyRoster.js` (session-only, not persisted like
+  `ignoreList` - a party roster shouldn't survive a reload or outlive the party) tracks the
+  current roster live off `EventRouter.js`; `PlayersHandler.isExcludedPlayer()` now checks it
+  alongside the Ignore List, consulted by `maybeAlert()`, `getFilteredPlayers()`, and
+  `getThreatPlayers()` identically to how PLAY-2 wired the Ignore List in.
 
 ## Closed in v2.2
 

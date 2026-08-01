@@ -16,9 +16,16 @@ vi.mock('../data/ZonesDatabase.js', () => ({
     },
 }));
 
+vi.mock('../data/PartyRoster.js', () => ({
+    default: {
+        isPartyMember: vi.fn(() => false),
+    },
+}));
+
 const {PlayersHandler} = await import('./PlayersHandler.js');
 const settingsSync = (await import('../utils/SettingsSync.js')).default;
 const zonesDatabase = (await import('../data/ZonesDatabase.js')).default;
+const partyRoster = (await import('../data/PartyRoster.js')).default;
 
 describe('PlayersHandler', () => {
     let handler;
@@ -30,6 +37,7 @@ describe('PlayersHandler', () => {
         settingsSync.getJSON.mockImplementation((_k, d) => d ?? null);
         zonesDatabase.getPvpType.mockReturnValue('safe');
         zonesDatabase.getZone.mockReturnValue({});
+        partyRoster.isPartyMember.mockReturnValue(false);
 
         window.logger = {debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn()};
         window.currentMapId = 'safe-zone-01';
@@ -324,6 +332,19 @@ describe('PlayersHandler', () => {
 
             expect(playSpy).not.toHaveBeenCalled();
         });
+
+        // @verified issue #3: party members are auto-detected live from Photon Party events
+        // (see PartyRoster.js) and excluded the same way as the manual Ignore List.
+        test('issue #3: a current party member does not trigger alert on faction change in red zone', () => {
+            zonesDatabase.getPvpType.mockReturnValue('red');
+            handler.handleNewPlayerEvent(1, {1: 'Alice', 8: '', 53: 0, 51: null, 40: [], 43: []});
+            partyRoster.isPartyMember.mockImplementation((name) => name === 'Alice');
+            const playSpy = vi.spyOn(handler, 'playThreatSound').mockImplementation(() => {});
+
+            handler.updatePlayerFaction(1, 255);
+
+            expect(playSpy).not.toHaveBeenCalled();
+        });
     });
 
     // ---------------------------------------------------------------------------
@@ -588,6 +609,20 @@ describe('PlayersHandler', () => {
             expect(result).toHaveLength(1);
             expect(result[0].nickname).toBe('Visible');
         });
+
+        // @verified issue #3: same exclusion contract as the Ignore List, but sourced live from
+        // PartyRoster instead of a persisted setting.
+        test('a current party member is excluded regardless of faction', () => {
+            zonesDatabase.getPvpType.mockReturnValue('red');
+            handler.handleNewPlayerEvent(1, {1: 'PartyMate', 8: '', 53: 255, 51: null, 40: [], 43: []});
+            handler.handleNewPlayerEvent(2, {1: 'Visible', 8: '', 53: 255, 51: null, 40: [], 43: []});
+            partyRoster.isPartyMember.mockImplementation((name) => name === 'PartyMate');
+
+            const result = handler.getFilteredPlayers();
+
+            expect(result).toHaveLength(1);
+            expect(result[0].nickname).toBe('Visible');
+        });
     });
 
     // ---------------------------------------------------------------------------
@@ -707,6 +742,19 @@ describe('PlayersHandler', () => {
             handler.handleNewPlayerEvent(1, {1: 'Ignored', 8: '', 53: 255, 51: null, 40: [], 43: []});
             handler.handleNewPlayerEvent(2, {1: 'Visible', 8: '', 53: 255, 51: null, 40: [], 43: []});
             settingsSync.getJSON.mockImplementation((k, d) => k === 'ignoreList' ? ['Ignored'] : (d ?? null));
+
+            const threats = handler.getThreatPlayers();
+
+            expect(threats).toHaveLength(1);
+            expect(threats[0].nickname).toBe('Visible');
+        });
+
+        // @verified issue #3: same exclusion contract, sourced from PartyRoster.
+        test('a current party member is excluded from threats', () => {
+            zonesDatabase.getPvpType.mockReturnValue('red');
+            handler.handleNewPlayerEvent(1, {1: 'PartyMate', 8: '', 53: 255, 51: null, 40: [], 43: []});
+            handler.handleNewPlayerEvent(2, {1: 'Visible', 8: '', 53: 255, 51: null, 40: [], 43: []});
+            partyRoster.isPartyMember.mockImplementation((name) => name === 'PartyMate');
 
             const threats = handler.getThreatPlayers();
 

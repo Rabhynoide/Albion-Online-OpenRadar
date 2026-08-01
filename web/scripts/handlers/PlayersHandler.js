@@ -1,6 +1,7 @@
 import {CATEGORIES} from "../constants/LoggerConstants.js";
 import zonesDatabase from "../data/ZonesDatabase.js";
 import settingsSync from "../utils/SettingsSync.js";
+import partyRoster from "../data/PartyRoster.js";
 
 class Player {
     constructor(posX, posY, id, nickname, guildName1, faction, allianceName, equipments, spells) {
@@ -135,6 +136,16 @@ export class PlayersHandler {
         return zonesDatabase.getZone(mapId) ? zonesDatabase.getPvpType(mapId) : 'yellow';
     }
 
+    // A player is excluded from alerts/radar/threat-border if they're on the manually-curated
+    // Ignore List (PLAY-2, issue #36), or if they're currently in the local player's own party
+    // (issue #3 - auto-detected live via Photon Party events, see PartyRoster.js). Checked in
+    // one place so both exclusion sources stay in sync across every call site.
+    isExcludedPlayer(nickname) {
+        if (partyRoster.isPartyMember(nickname)) return true;
+        const ignoreList = settingsSync.getJSON('ignoreList', []);
+        return ignoreList.includes(nickname);
+    }
+
     updateItems(id, Parameters) {
         // eslint-disable-next-line no-useless-assignment
         let items = null;
@@ -202,13 +213,11 @@ export class PlayersHandler {
         return 2;
     }
 
-    // Fires the configured flash/sound alert, unless the player is on the Ignore List (PLAY-2,
-    // issue #36 - the Ignore List page persists ignored names to settingsSync, see
-    // internal/templates/pages/ignorelist.gohtml; this must be checked at every alert call
-    // site, not just the faction-change one, since a player can also spawn already-hostile).
+    // Fires the configured flash/sound alert, unless the player is excluded (Ignore List or
+    // current party - see isExcludedPlayer()). Checked at every alert call site, not just the
+    // faction-change one, since a player can also spawn already-hostile.
     maybeAlert(nickname) {
-        const ignoreList = settingsSync.getJSON('ignoreList', []);
-        if (ignoreList.includes(nickname)) return;
+        if (this.isExcludedPlayer(nickname)) return;
 
         if (settingsSync.getBool('settingFlash')) {
             this.triggerScreenFlash();
@@ -386,15 +395,13 @@ export class PlayersHandler {
         const showPassive = settingsSync.getBool('settingPassivePlayers') ?? true;
         const showFaction = settingsSync.getBool('settingFactionPlayers') ?? true;
         const showDangerous = settingsSync.getBool('settingDangerousPlayers') ?? true;
-        // The Ignore List page (internal/templates/pages/ignorelist.gohtml) promises ignored
-        // players are excluded from the radar too, not just alerts - PLAY-2's fix only
-        // covered maybeAlert(), so this was still silently broken.
-        const ignoreList = settingsSync.getJSON('ignoreList', []);
 
         const pvpType = zonesDatabase.getPvpType(window.currentMapId);
 
         return this.playersList.filter(player => {
-            if (ignoreList.includes(player.nickname)) return false;
+            // The Ignore List page (internal/templates/pages/ignorelist.gohtml) promises
+            // ignored/party players are excluded from the radar too, not just alerts.
+            if (this.isExcludedPlayer(player.nickname)) return false;
 
             // In blackzone, ALL players are threats - use showDangerous setting
             if (pvpType === 'black') {
@@ -428,13 +435,12 @@ export class PlayersHandler {
         };
     }
 
-    // Drives RadarRenderer's pulsing threat-border warning - an ignored player must not
+    // Drives RadarRenderer's pulsing threat-border warning - an excluded player must not
     // trigger it either, same reasoning as maybeAlert().
     getThreatPlayers() {
         const pvpType = this.getAlertPvpType(window.currentMapId);
-        const ignoreList = settingsSync.getJSON('ignoreList', []);
         return this.playersList.filter(p =>
-            !ignoreList.includes(p.nickname) && this.isPlayerThreat(p.faction, pvpType)
+            !this.isExcludedPlayer(p.nickname) && this.isPlayerThreat(p.faction, pvpType)
         );
     }
 }

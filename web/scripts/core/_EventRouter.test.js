@@ -8,6 +8,7 @@ import {OperationCodes} from '../utils/OperationCodes.js';
 import {loadFixture, normalizeParams} from '../__fixtures__/loader.js';
 import zonesDatabase from '../data/ZonesDatabase.js';
 import zoneGraph from '../data/ZoneGraph.js';
+import partyRoster from '../data/PartyRoster.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const zonesJsonPath = join(here, '..', '..', 'ao-bin-dumps', 'zones.json');
@@ -840,6 +841,50 @@ describe('EventRouter', () => {
     });
 
     // -------------------------------------------------------------------------
+    // onEvent Party (231/232/235) - issue #3, auto-exclude party members. See
+    // docs/technical/PROTOCOL18_PARAM_LAYOUTS.md's "Party events" section and PartyRoster.js.
+    // -------------------------------------------------------------------------
+    describe('onEvent Party', () => {
+        let handlePartyJoinedSpy;
+        let handlePartyPlayerLeftSpy;
+        let handlePartyDisbandedSpy;
+
+        beforeEach(() => {
+            handlePartyJoinedSpy = vi.spyOn(partyRoster, 'handlePartyJoined').mockImplementation(() => {});
+            handlePartyPlayerLeftSpy = vi.spyOn(partyRoster, 'handlePartyPlayerLeft').mockImplementation(() => {});
+            handlePartyDisbandedSpy = vi.spyOn(partyRoster, 'handlePartyDisbanded').mockImplementation(() => {});
+        });
+
+        afterEach(() => {
+            handlePartyJoinedSpy.mockRestore();
+            handlePartyPlayerLeftSpy.mockRestore();
+            handlePartyDisbandedSpy.mockRestore();
+        });
+
+        test('onEvent routes PartyJoined (P[252]=231) to partyRoster.handlePartyJoined with the full params', () => {
+            const p = {0: 71412, 9: ['Rabhynoide', 'S3phir0th'], 252: 231};
+
+            EventRouter.onEvent(p);
+
+            expect(handlePartyJoinedSpy).toHaveBeenCalledWith(p);
+        });
+
+        test('onEvent routes PartyPlayerLeft (P[252]=235) to partyRoster.handlePartyPlayerLeft with the full params', () => {
+            const p = {0: 71412, 1: [1, 2, 3], 252: 235};
+
+            EventRouter.onEvent(p);
+
+            expect(handlePartyPlayerLeftSpy).toHaveBeenCalledWith(p);
+        });
+
+        test('onEvent routes PartyDisbanded (P[252]=232) to partyRoster.handlePartyDisbanded', () => {
+            EventRouter.onEvent({1: 71412, 252: 232});
+
+            expect(handlePartyDisbandedSpy).toHaveBeenCalled();
+        });
+    });
+
+    // -------------------------------------------------------------------------
     // onEvent Mounted (211)
     // -------------------------------------------------------------------------
     describe('onEvent Mounted', () => {
@@ -1371,6 +1416,16 @@ describe('EventRouter', () => {
 
             expect(EventRouter._debugGetLastActiveMistOverride()).toBeNull();
         });
+    });
+
+    // issue #3: a party roster from a previous session must not leak into the next one.
+    test('reset() clears partyRoster', () => {
+        const resetSpy = vi.spyOn(partyRoster, 'reset').mockImplementation(() => {});
+
+        EventRouter.reset();
+
+        expect(resetSpy).toHaveBeenCalled();
+        resetSpy.mockRestore();
     });
 
     describe('MIST-119 NewRandomDungeonExit routing (MISTS_DUNGEON detection)', () => {

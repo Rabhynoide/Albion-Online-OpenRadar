@@ -151,6 +151,52 @@ sits there until dug up); `SPECIAL_EVENT_1`/`ANNIVERSARY` entries carry a real ~
 start/end window, matching this event's status as the reference pattern for any future
 "does this entity have a real lifetime" investigation.
 
+### Party events (231, 232, 235, 229)
+
+Confirmed 2026-08-01 via a live capture of a 2-person party being formed, disbanded, and
+re-formed (invite, accept, leave). Motivated by issue #3 - auto-excluding party members from
+hostile-player alerts, same mechanism as the manual Ignore List (see
+`web/scripts/data/PartyRoster.js` and `PlayersHandler.js`).
+
+**Event 231 (`PartyJoined`)** - a full party roster snapshot, sent to the client whenever
+their own party's membership state is (re)established (initial join, and again after
+disband+reform in this capture - not confirmed whether it also fires for every individual
+join/leave of an *existing* party you're already in, since this capture never exercised a
+3+-person party):
+
+```
+params[ 0] int          party/group instance id (changes each time a party is formed)
+params[ 4] byte[16]     GUID of one member (the party leader, in every observed sample)
+params[ 8] byte[]       concatenated 16-byte member GUIDs, one per member, same order as [9]
+params[ 9] string[]     member display names, same order as the GUIDs in [8] - the field
+                        that actually matters for auto-whitelisting
+params[ 2] int          always 1 in this capture - meaning not determined
+params[10-13] byte[N]   per-member arrays (N = member count) - meaning not determined
+params[14] int[]        per-member array (e.g. [-1,-1]) - meaning not determined
+params[15] int[]        per-member array (e.g. [6,-1]) - meaning not determined
+params[16] bool[]       per-member array (e.g. [true,true]) - plausibly "online", not confirmed
+```
+
+**Event 232 (`PartyDisbanded`)**: `params[1]` int, the party id being disbanded (matches a
+prior `PartyJoined`'s `params[0]`).
+
+**Event 235 (`PartyPlayerLeft`)**: `params[0]` int party id, `params[1]` byte[16] GUID of the
+member who left - **no name field**, must be resolved against a GUID→name map built from the
+most recent `PartyJoined` for that party (`PartyRoster.js` does this).
+
+**Event 229 (`PartyInvitation`, incoming invite, not yet accepted)**: also carries names
+directly - `params[0]` byte[16] inviter GUID, `params[1]` string inviter name, `params[6]`
+string inviter's guild name, `params[7]` int the party id you'd be joining, `params[13]`
+string[] the current roster at invite time. Not currently consumed (the party isn't real until
+`PartyJoined` fires), documented here since it independently confirms the params[0]-is-party-id
+and name-array patterns above.
+
+**Confirmed absent**: `PartyPlayerJoined` (233), the event whose name most directly suggests
+"someone joined", never appeared in this capture at all - `PartyJoined` (231) covered every
+membership change observed. Not yet confirmed whether 233 exists for scenarios this capture
+didn't exercise (3+ person party, joining an already-formed party mid-session while other
+members are online).
+
 ## Gaps in this snapshot
 
 - No combat events (Cast*, Damage*): single idle plus harvest scenario.
