@@ -28,7 +28,14 @@ export class MapDrawing extends DrawingUtils
         const size = extent * scaleFactor;
         const adjX = (curr_map.hX - center.x) * scaleFactor;
         const adjY = (curr_map.hY + center.y) * scaleFactor;
-        this.DrawImageMap(ctx, adjX, adjY, id, size, size);
+        // Roads of Avalon passage/tunnel instances have a per-instance zone id (e.g.
+        // "PSG-0039#2") but only one downloaded tile per base zone ("PSG-0039.webp" - see
+        // download-and-optimize-map.ts, which names files from zone.file, not zone.id). Using
+        // the raw id as the image name 404s for every one of these (#15) - resolve through
+        // zone.file instead, same truncation the downloader itself uses.
+        const zoneFile = zonesDatabase.getZoneFile(id);
+        const imageName = zoneFile ? zoneFile.split('_')[0] : id;
+        this.DrawImageMap(ctx, adjX, adjY, imageName, size, size);
     }
     DrawImageMap(ctx, x, y, imageName, drawWidth, drawHeight)
     {

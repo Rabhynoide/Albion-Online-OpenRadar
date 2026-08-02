@@ -30,6 +30,7 @@ OpenRadar/
 │   ├── photon/                # Protocol18 deserializer, event codes, fixtures
 │   ├── roads/                 # Local per-user Avalon Road discovery persistence (roads.json)
 │   ├── server/                # HTTP routes, WebSocket handler, settings/network/roads APIs
+│   ├── syncsettings/          # Server-side backup of browser settings (settings-sync.json)
 │   ├── templates/             # Go html/template pages + layouts (SSR, embedded)
 │   ├── ui/                    # Bubble Tea TUI dashboard
 │   └── logger/                # JSONL structured logging

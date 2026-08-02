@@ -49,6 +49,12 @@
             getResourceStorageKey
         };
 
+        // Issue #21: hydrate any setting missing from this browser's localStorage from the
+        // backend's settings-sync.json before any page reads a setting default - every page's
+        // init already waits on globalsReady (see onGlobalsReady below), so gating the event on
+        // this one fetch covers every page for free, not just the radar page.
+        await settingsSync.loadFromBackend();
+
         window.__globalsReady = true;
         document.dispatchEvent(new CustomEvent('globalsReady'));
     </script>

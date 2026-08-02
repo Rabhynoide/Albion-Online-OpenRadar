@@ -30,7 +30,6 @@
 
 ### Maps
 
-- [ ] Black Zone map tiles extraction from the Albion client (zone IDs 4000+, 5000+).
 - [ ] Map tile size normalization (fix stretching on small zones).
 - [ ] Map centering optimization.
 
@@ -42,7 +41,6 @@
 ### Other improvements
 
 - [ ] Quality metrics dashboard.
-- [ ] Configuration file support beyond `network.json`.
 
 ## Closed in v2.3 (in progress)
 
@@ -80,6 +78,26 @@
   branch diverged - GPS, PLAY-1/2/3, the backend/frontend optimization pass). Buried treasure
   chests, temporary rich resource nodes, smuggler piles, and timed special/anniversary events
   now actually render on the radar, gated behind `settingLocalTreasures`.
+- **MAP-1** (#15, "Extraction des tuiles de map Zone Noire"): turned out not to be a missing-
+  extraction problem - 641/641 real (non-instanced) Black Zone tiles were already downloaded
+  and committed. The actual bug: Roads of Avalon passage/tunnel instances have a per-instance
+  zone id (`PSG-0039#2`) but only one tile is ever downloaded per base zone (`PSG-0039.webp`,
+  named from `zone.file`, not `zone.id` - see `download-and-optimize-map.ts`).
+  `MapsDrawing.js`'s `draw()` was looking up the tile by the raw (suffixed) id, so it 404'd for
+  every one of these - 138 zones across all pvp tiers, not just Black Zone. Now resolves the
+  image name through `zonesDatabase.getZoneFile()`, truncated the same way the downloader
+  truncates it, falling back to the raw id when a zone has no `file` (unaffected zones keep
+  their exact previous behavior).
+- **CFG-1** (#21, "Support d'un fichier de config au-delà de network.json"): the browser-
+  localStorage settings (`web/scripts/utils/SettingsSync.js` - feature toggles, the Ignore
+  List, etc.) now also persist server-side to `settings-sync.json` (new `internal/syncsettings`
+  package, same atomic-write pattern as `network.json`), so they survive a browser data wipe or
+  move to another machine. New `GET/POST/DELETE /api/settings/sync`. `localStorage` stays the
+  synchronous source of truth for reads and the fallback when the backend is unreachable;
+  writes go through best-effort (mirrors `ZoneGraph.reportTransition`'s fetch-guard pattern),
+  and a value already present locally is never overwritten by hydration - only genuinely
+  missing keys are filled in. Hydration is gated behind the existing `globalsReady` event in
+  `base.gohtml`, so every page benefits (not just the main radar page).
 
 ## Closed in v2.2
 

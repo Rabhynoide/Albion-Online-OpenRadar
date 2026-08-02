@@ -32,14 +32,15 @@ type HTTPServer struct {
 	sounds  fs.FS
 	styles  fs.FS
 	// Template engine
-	tmpl           *templates.Engine
-	version        string
-	assetID        string
-	devMode        bool
-	networkAPI     *NetworkAPI
-	settingsAPI    *SettingsAPI
-	roadsAPI       *RoadsAPI
-	hubSettingsAPI *HubSettingsAPI
+	tmpl            *templates.Engine
+	version         string
+	assetID         string
+	devMode         bool
+	networkAPI      *NetworkAPI
+	settingsAPI     *SettingsAPI
+	roadsAPI        *RoadsAPI
+	hubSettingsAPI  *HubSettingsAPI
+	settingsSyncAPI *SettingsSyncAPI
 	// assetCache holds already-gzip-compressed static assets (see readAssetCached). Only
 	// populated in prod mode - embed.FS content is immutable for the process lifetime, but dev
 	// mode's os.DirFS deliberately reads live from disk on every request for hot-reload.
@@ -129,6 +130,7 @@ func NewHTTPServer(
 	s.settingsAPI = NewSettingsAPI(appDir, log, recorder, captureDir)
 	s.roadsAPI = NewRoadsAPI(appDir)
 	s.hubSettingsAPI = NewHubSettingsAPI(appDir)
+	s.settingsSyncAPI = NewSettingsSyncAPI(appDir)
 	s.setupRoutes()
 	return s, nil
 }
@@ -175,6 +177,7 @@ func NewHTTPServerDev(
 	s.settingsAPI = NewSettingsAPI(appDir, log, recorder, captureDir)
 	s.roadsAPI = NewRoadsAPI(appDir)
 	s.hubSettingsAPI = NewHubSettingsAPI(appDir)
+	s.settingsSyncAPI = NewSettingsSyncAPI(appDir)
 	s.setupRoutes()
 	return s, nil
 }
@@ -224,6 +227,7 @@ func (s *HTTPServer) setupRoutes() {
 	}
 	s.roadsAPI.Register(apiMux)
 	s.hubSettingsAPI.Register(apiMux)
+	s.settingsSyncAPI.Register(apiMux)
 	s.mux.Handle("/api/", noStore(apiMux))
 }
 

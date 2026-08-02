@@ -48,6 +48,77 @@ export class SettingsSync {
         return value;
     }
 
+    // Issue #21: hydrate localStorage from settings-sync.json on startup, so settings survive
+    // a browser data wipe or move to another machine. Only fills keys ABSENT locally - a value
+    // already in localStorage is trusted as-is (it may include edits made offline that haven't
+    // synced to the backend yet), so this never clobbers the current browser's state, it only
+    // recovers what's missing. Call once, before any feature code reads a setting.
+    async loadFromBackend() {
+        try {
+            const response = await fetch('/api/settings/sync');
+            if (!response.ok) return;
+            const settings = await response.json();
+            let hydrated = 0;
+            for (const [key, value] of Object.entries(settings)) {
+                if (localStorage.getItem(key) === null) {
+                    this._setLocal(key, value);
+                    hydrated++;
+                }
+            }
+            if (hydrated > 0) {
+                window.logger?.info(CATEGORIES.SYSTEM, 'SettingsSyncBackendHydrated', {hydrated});
+            }
+        } catch (error) {
+            window.logger?.debug(CATEGORIES.SYSTEM, 'SettingsSyncBackendLoadFailed', {
+                error: error?.message || error
+            });
+        }
+    }
+
+    // Best-effort write-through to settings-sync.json. Mirrors ZoneGraph.reportTransition's
+    // fetch guard: try/catch around the call itself (fetch can throw synchronously, e.g.
+    // unavailable in the current environment) in addition to .catch() on the rejection, so a
+    // sync failure never breaks the setting change it's piggybacking on.
+    _syncToBackend(key, value) {
+        try {
+            Promise.resolve(
+                fetch('/api/settings/sync', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({key, value}),
+                })
+            ).catch((error) => {
+                window.logger?.debug(CATEGORIES.SYSTEM, 'SettingsSyncBackendWriteFailed', {
+                    key,
+                    error: error?.message || error
+                });
+            });
+        } catch (error) {
+            window.logger?.debug(CATEGORIES.SYSTEM, 'SettingsSyncBackendWriteFailed', {
+                key,
+                error: error?.message || error
+            });
+        }
+    }
+
+    _deleteFromBackend(key) {
+        try {
+            Promise.resolve(
+                fetch(`/api/settings/sync?key=${encodeURIComponent(key)}`, {method: 'DELETE'})
+            ).catch((error) => {
+                window.logger?.debug(CATEGORIES.SYSTEM, 'SettingsSyncBackendDeleteFailed', {
+                    key,
+                    error: error?.message || error
+                });
+            });
+        } catch (error) {
+            window.logger?.debug(CATEGORIES.SYSTEM, 'SettingsSyncBackendDeleteFailed', {
+                key,
+                error: error?.message || error
+            });
+        }
+    }
+
     handleMessage(data) {
         if (data.type === 'setting-changed' || data.type === 'setting-removed') {
             if (data.type === 'setting-changed') {
@@ -78,7 +149,10 @@ export class SettingsSync {
         }
     }
 
-    broadcast(key, value) {
+    // Local-only: updates this tab's localStorage/cache and notifies other tabs, without
+    // touching the backend. Used by broadcast() (which adds the backend write-through) and by
+    // loadFromBackend() (which must NOT write back what it just read).
+    _setLocal(key, value) {
         localStorage.setItem(key, value);
 
         if (this.channel && this.isInitialized) {
@@ -93,6 +167,11 @@ export class SettingsSync {
         }
 
         this.handleMessage({ type: 'setting-changed', key, value });
+    }
+
+    broadcast(key, value) {
+        this._setLocal(key, value);
+        this._syncToBackend(key, value);
     }
 
     on(key, callback) {
@@ -179,6 +258,7 @@ export class SettingsSync {
         }
 
         this.handleMessage({ type: 'setting-removed', key, value: null });
+        this._deleteFromBackend(key);
     }
 
     destroy() {

@@ -107,3 +107,4 @@ HELPER PACKAGE/
 captures/
 /network.json
 /roads.json
+/settings-sync.json

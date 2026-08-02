@@ -23,11 +23,13 @@ vi.mock('../data/ZonesDatabase.js', () => ({
     default: {
         getMapAssetExtent: vi.fn(() => 825),
         getMapAssetCenter: vi.fn(() => ({x: 0, y: 0})),
+        getZoneFile: vi.fn(() => null),
     },
 }));
 
 const {MapDrawing} = await import('./MapsDrawing.js');
 const zonesDatabase = (await import('../data/ZonesDatabase.js')).default;
+const imageCache = (await import('../utils/ImageCache.js')).default;
 
 function buildCtx() {
     return {
@@ -164,5 +166,29 @@ describe('MapsDrawing per-zone asset extent', () => {
         drawing.draw(ctx, map);
 
         expect(ctx.drawImage).not.toHaveBeenCalled();
+    });
+
+    // @verified 2026-08-02 (#15): Roads of Avalon passage/tunnel instances have a per-instance
+    // zone id ("PSG-0039#2") but only one downloaded tile per base zone ("PSG-0039.webp" -
+    // download-and-optimize-map.ts names files from zone.file, truncated at the first "_").
+    // Using the raw id as the image name 404s for every one of these 138 zones.
+    test('resolves the image name through zone.file, not the raw suffixed id', () => {
+        zonesDatabase.getZoneFile.mockReturnValueOnce('PSG-0039_PGU_MN_AUTO_T5_NON_OUT_Q2');
+        const map = {id: 'PSG-0039#2', hX: 0, hY: 0};
+
+        drawing.draw(ctx, map);
+
+        expect(imageCache.GetPreloadedImage).toHaveBeenCalledWith('/images/Maps/PSG-0039.webp', 'Maps');
+    });
+
+    // @verified 2026-08-02: regression guard - ordinary zones (file prefix === id) must keep
+    // resolving to the same image name as before this fix.
+    test('falls back to the raw id when zone.file is unknown', () => {
+        zonesDatabase.getZoneFile.mockReturnValueOnce(null);
+        const map = {id: '0212', hX: 0, hY: 0};
+
+        drawing.draw(ctx, map);
+
+        expect(imageCache.GetPreloadedImage).toHaveBeenCalledWith('/images/Maps/0212.webp', 'Maps');
     });
 });
