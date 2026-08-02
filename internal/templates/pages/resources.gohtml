@@ -85,6 +85,24 @@
         </div>
     </div>
 
+    <!-- Alerts Section -->
+    <div class="card bg-base-200">
+        <div class="card-body">
+            <h2 class="text-xl font-semibold text-base-content mb-4 flex items-center gap-2">
+                <i data-lucide="bell" class="w-5 h-5 text-warning"></i>
+                Alerts
+            </h2>
+            <label class="flex items-center gap-3 p-3 rounded-lg bg-warning/10 border border-warning/20 cursor-pointer group hover:bg-warning/20 transition-colors">
+                <input type="checkbox" id="settingResourceSound" class="checkbox checkbox-warning">
+                <i data-lucide="volume-2" class="w-5 h-5 text-warning"></i>
+                <span class="text-base-content/80 group-hover:text-base-content transition-colors font-medium">Sound Alert</span>
+                <div class="tooltip" data-tip="Plays a sound when a resource matching your current filters above is detected.">
+                    <i data-lucide="info" class="w-4 h-4 opacity-50"></i>
+                </div>
+            </label>
+        </div>
+    </div>
+
     <!-- Other Resources -->
     <div class="card bg-base-200">
         <div class="card-body">
@@ -300,6 +318,7 @@
             };
 
             // Other settings
+            bindCheckbox("settingResourceSound");
             bindCheckbox("settingFishing");
             bindCheckbox("settingResourceCount");
             bindCheckbox("settingResourceDistance");

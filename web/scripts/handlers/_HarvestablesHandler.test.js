@@ -882,6 +882,95 @@ describe('HarvestablesHandler', () => {
         });
     });
 
+    describe('maybeAlertResource / sound alert (issue #22)', () => {
+        // @verified 2026-08-02: same shape settingsSync.getJSON returns for the render-time
+        // filter (LivingResourceFilter.js) - only tier 4/enchant 1 enabled here.
+        function onlyTier4Enchant1() {
+            const cell = {
+                e0: Array(8).fill(false), e1: Array(8).fill(false), e2: Array(8).fill(false),
+                e3: Array(8).fill(false), e4: Array(8).fill(false),
+            };
+            cell.e1[3] = true; // tier 4 (index 3), enchant 1
+            return cell;
+        }
+
+        test('a new static resource matching the current filter plays the sound once', () => {
+            const playSpy = vi.spyOn(handler, 'playResourceSound').mockImplementation(() => {});
+            settingsSync.getJSON.mockReturnValue(onlyTier4Enchant1());
+            const p = {0: 1, 5: 14, 6: -1, 7: 4, 8: [-10, 10], 10: 3, 11: 1}; // tier 4, enchant 1
+
+            handler.newHarvestableObject(1, p);
+
+            expect(playSpy).toHaveBeenCalledTimes(1);
+        });
+
+        test('settingResourceSound=false suppresses the alert even on a matching resource', () => {
+            const playSpy = vi.spyOn(handler, 'playResourceSound').mockImplementation(() => {});
+            settingsSync.getBool.mockImplementation(key => key !== 'settingResourceSound');
+            settingsSync.getJSON.mockReturnValue(onlyTier4Enchant1());
+            const p = {0: 1, 5: 14, 6: -1, 7: 4, 8: [-10, 10], 10: 3, 11: 1};
+
+            handler.newHarvestableObject(1, p);
+
+            expect(playSpy).not.toHaveBeenCalled();
+        });
+
+        test('a resource not matching the current filter does not alert', () => {
+            const playSpy = vi.spyOn(handler, 'playResourceSound').mockImplementation(() => {});
+            settingsSync.getJSON.mockReturnValue(onlyTier4Enchant1());
+            const p = {0: 1, 5: 14, 6: -1, 7: 5, 8: [-10, 10], 10: 3, 11: 1}; // tier 5, not enabled
+
+            handler.newHarvestableObject(1, p);
+
+            expect(playSpy).not.toHaveBeenCalled();
+        });
+
+        // @verified 2026-08-02: Event 38 batch spawns always start at charges=0 (see
+        // newSimpleHarvestableObject) - a resource matching only a non-zero enchant cell can't
+        // alert at spawn time, only once Event 46 corrects the real enchant.
+        test('a batch-spawned resource alerts only once Event 46 corrects its enchant to match', () => {
+            const playSpy = vi.spyOn(handler, 'playResourceSound').mockImplementation(() => {});
+            settingsSync.getJSON.mockReturnValue(onlyTier4Enchant1()); // only e1/tier4 enabled
+            const p = {0: [42], 1: [14], 2: [4], 3: [-10, 10], 4: [3]}; // tier 4, charges=0 at spawn
+
+            handler.newSimpleHarvestableObject(p);
+            expect(playSpy).not.toHaveBeenCalled();
+
+            handler.HarvestUpdateEvent({0: 42, 1: 3, 2: 1}); // enchant corrected to 1
+
+            expect(playSpy).toHaveBeenCalledTimes(1);
+        });
+
+        test('the alert does not re-fire on subsequent updates once it has already matched', () => {
+            const playSpy = vi.spyOn(handler, 'playResourceSound').mockImplementation(() => {});
+            settingsSync.getJSON.mockReturnValue(onlyTier4Enchant1());
+            const p = {0: 1, 5: 14, 6: -1, 7: 4, 8: [-10, 10], 10: 3, 11: 1};
+            handler.newHarvestableObject(1, p);
+            expect(playSpy).toHaveBeenCalledTimes(1);
+
+            handler.HarvestUpdateEvent({0: 1, 1: 2, 2: 1}); // size change, same matching enchant
+
+            expect(playSpy).toHaveBeenCalledTimes(1);
+        });
+
+        // @verified 2026-08-02: living resources (mobileTypeId set) are gated through
+        // shouldRenderLivingResource, using the Living* settings key, not the Static* one.
+        test('a living resource is checked against the living settings key, not static', () => {
+            const playSpy = vi.spyOn(handler, 'playResourceSound').mockImplementation(() => {});
+            settingsSync.getJSON.mockImplementation(key =>
+                key === 'settingLivingHideEnchants' ? onlyTier4Enchant1() : {
+                    e0: Array(8).fill(false), e1: Array(8).fill(false), e2: Array(8).fill(false),
+                    e3: Array(8).fill(false), e4: Array(8).fill(false),
+                }
+            );
+            const p = {0: 1, 5: 16, 6: 424, 7: 4, 8: [-10, 10], 10: 3, 11: 1}; // living Hide, mobId=424
+
+            handler.newHarvestableObject(1, p);
+
+            expect(playSpy).toHaveBeenCalledTimes(1);
+        });
+    });
+
     describe('removeNotInRange', () => {
         // @verified 2026-04-18: entities farther than 80 units are removed.
         test('synthetic: removeNotInRange filters entities beyond 80 units', () => {

@@ -7,7 +7,7 @@
 
 | System | Status | Notes |
 |---|---|---|
-| Resources | working | database-driven, cleanup, filtering, T1-T8 with enchantments, render-time gate (#82) |
+| Resources | working | database-driven, cleanup, filtering, T1-T8 with enchantments, render-time gate (#82), sound alert on a filter-matching spawn (#22) |
 | Mobs | working | OFFSET=16 confirmed (#93), 9 classifications, color-coded threat |
 | Players | working | faction detection, zone-aware alerts (unmapped zones no longer suppress hostile alerts, #65), ignore list actually respected by alerts/radar/threat-border (#36), Mist instance pvpType inherits parent (#103), party members auto-excluded from alerts/radar/threat-border (#3) |
 | Zones | working | PvP type detection, threat logic |
@@ -98,6 +98,15 @@
   and a value already present locally is never overwritten by hydration - only genuinely
   missing keys are filled in. Hydration is gated behind the existing `globalsReady` event in
   `base.gohtml`, so every page benefits (not just the main radar page).
+- **HARV-5** (#22, "Alerte sonore sur ressource filtrée détectée"): plays a one-shot sound
+  (`web/sounds/coin.mp3`) the first time a harvestable's tier/enchant match the player's
+  current resource filters - the exact same gate `HarvestablesDrawing.js` uses to decide
+  whether to render it (`shouldRenderStaticResource`/`shouldRenderLivingResource` from
+  `LivingResourceFilter.js`), so the alert never fires for something that wouldn't actually be
+  shown. Checked both at spawn (individual Event 40, enchant known immediately) and at Event
+  46's enchant correction (batch Event 38 spawns start at enchant=0), gated behind a new
+  `settingResourceSound` toggle on the Resources page. A per-instance `alerted` flag stops it
+  from re-firing on every later size update once a spawn has already matched once.
 
 ## Closed in v2.2
 

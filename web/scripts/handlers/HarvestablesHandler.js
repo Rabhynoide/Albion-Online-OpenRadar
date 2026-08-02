@@ -1,4 +1,6 @@
 import {CATEGORIES} from "../constants/LoggerConstants.js";
+import settingsSync from "../utils/SettingsSync.js";
+import {shouldRenderLivingResource, shouldRenderStaticResource} from "../utils/LivingResourceFilter.js";
 
 // removeNotInRange is throttled to this interval (see HarvestablesHandler constructor) -
 // harvestables don't move, so re-filtering by distance more often than the player can
@@ -31,6 +33,9 @@ class Harvestable
         this.stringType = stringType;
         this.mobileTypeId = mobileTypeId;
         this.lastUpdateTime = Date.now();
+        // Issue #22: whether the sound alert has already fired for this spawn instance - a
+        // one-shot per id, not a per-frame check like rendering, see maybeAlertResource().
+        this.alerted = false;
 
         window.logger?.info(CATEGORIES.HARVESTABLES, 'HarvestableCreated', {
             id, type, stringType, tier, charges, size, mobileTypeId,
@@ -86,6 +91,41 @@ export class HarvestablesHandler
         this._lastRangeCheckAt = 0;
     }
 
+    playResourceSound() {
+        try {
+            const audio = new Audio('/sounds/coin.mp3');
+            audio.play().catch((err) => {
+                window.logger?.debug(CATEGORIES.HARVESTABLES, 'audio_blocked', {error: err?.message});
+            });
+        } catch (err) {
+            window.logger?.debug(CATEGORIES.HARVESTABLES, 'audio_error', {error: err?.message});
+        }
+    }
+
+    // Issue #22: plays a one-shot sound the first time a harvestable's current tier/enchant
+    // match the player's resource filters - the exact same gate HarvestablesDrawing.js uses to
+    // decide whether to render it (shouldRenderStaticResource/shouldRenderLivingResource), so
+    // the alert never fires for a resource that wouldn't actually be shown. `alerted` prevents
+    // re-firing on every later size/charge update once a spawn has already matched once.
+    maybeAlertResource(harvestable) {
+        if (harvestable.alerted) return;
+        if (!settingsSync.getBool('settingResourceSound')) return;
+
+        const mobileTypeId = harvestable.mobileTypeId;
+        const isPureStatic = mobileTypeId === null || mobileTypeId === undefined
+            || mobileTypeId === -1 || mobileTypeId === 65535;
+        const filterEntity = {
+            name: harvestable.stringType,
+            tier: harvestable.tier,
+            enchantmentLevel: harvestable.charges,
+        };
+        const filterFn = isPureStatic ? shouldRenderStaticResource : shouldRenderLivingResource;
+        if (!filterFn(filterEntity, key => settingsSync.getJSON(key))) return;
+
+        harvestable.alerted = true;
+        this.playResourceSound();
+    }
+
     addHarvestable(id, type, tier, posX, posY, charges, size, mobileTypeId = null)
     {
         // Determine resource type: living (animals/creatures) vs static.
@@ -136,6 +176,7 @@ export class HarvestablesHandler
         {
             const h = new Harvestable(id, type, tier, posX, posY, charges, size, stringType, mobileTypeId);
             this.harvestableList.push(h);
+            this.maybeAlertResource(h);
 
             window.logger?.info(CATEGORIES.HARVESTABLES, 'HarvestableAdded', {
                 id, type, stringType, tier, charges, size, mobileTypeId,
@@ -268,6 +309,11 @@ export class HarvestablesHandler
             });
             harvestable.charges = enchant;
         }
+
+        // Issue #22: batch spawns (Event 38) start at enchant=0 and only become identifiable
+        // once this event corrects it - re-check the alert gate now that the real enchant (and
+        // any size correction above) are known. No-op if it already alerted or still doesn't match.
+        this.maybeAlertResource(harvestable);
     }
 
     // Normally work with everything
