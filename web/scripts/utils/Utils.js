@@ -8,6 +8,7 @@ import {WispCageDrawing} from '../drawings/WispCageDrawing.js';
 import {MistsWispDrawing} from '../drawings/MistsWispDrawing.js';
 import {FishingDrawing} from '../drawings/FishingDrawing.js';
 import {MistsDungeonDrawing} from '../drawings/MistsDungeonDrawing.js';
+import {LocalTreasuresDrawing} from '../drawings/LocalTreasuresDrawing.js';
 
 import {PlayersHandler} from '../handlers/PlayersHandler.js';
 import {WispCageHandler} from '../handlers/WispCageHandler.js';
@@ -16,6 +17,7 @@ import {MobsHandler} from '../handlers/MobsHandler.js';
 import {ChestsHandler} from '../handlers/ChestsHandler.js';
 import {HarvestablesHandler} from '../handlers/HarvestablesHandler.js';
 import {MistsDungeonHandler} from '../handlers/MistsDungeonHandler.js';
+import {LocalTreasuresHandler} from '../handlers/LocalTreasuresHandler.js';
 import {MapH} from './Map.js';
 import {DungeonsHandler} from '../handlers/DungeonsHandler.js';
 import {DrawingUtils} from './DrawingUtils.js';
@@ -40,13 +42,13 @@ let lastPlayerListHash = '';
 
 let handlers = {
     harvestables: null, mobs: null, players: null, chests: null,
-    dungeons: null, wispCage: null, fishing: null, mistsDungeon: null
+    dungeons: null, wispCage: null, fishing: null, mistsDungeon: null, localTreasures: null
 };
 
 let drawings = {
     harvestables: null, mobs: null, players: null, chests: null,
     dungeons: null, wispCage: null, mistsWisp: null, fishing: null, maps: null,
-    mistsDungeon: null
+    mistsDungeon: null, localTreasures: null
 };
 
 let drawingUtils = null;
@@ -59,16 +61,18 @@ function cleanupStaleEntities() {
     const cleanedMobs = handlers.mobs?.cleanupStaleEntities?.(STALE_ENTITY_MAX_AGE) || 0;
     const cleanedHarvestables = handlers.harvestables?.cleanupStaleEntities?.(STALE_ENTITY_MAX_AGE) || 0;
     const cleanedFishing = handlers.fishing?.cleanupStaleEntities?.(STALE_ENTITY_MAX_AGE) || 0;
+    const cleanedLocalTreasures = handlers.localTreasures?.cleanupStaleEntities?.(STALE_ENTITY_MAX_AGE) || 0;
 
     const activePlayerIds = new Set(handlers.players?.getFilteredPlayers?.().map(p => p.id) || []);
     const cleanedRenderCache = PlayerListRenderer.cleanupStaleCache(activePlayerIds);
 
-    if (cleanedPlayers || cleanedMobs || cleanedHarvestables || cleanedFishing || cleanedRenderCache) {
+    if (cleanedPlayers || cleanedMobs || cleanedHarvestables || cleanedFishing || cleanedLocalTreasures || cleanedRenderCache) {
         window.logger?.debug(CATEGORIES.SYSTEM, 'StaleEntityCleanup', {
             players: cleanedPlayers,
             mobs: cleanedMobs,
             harvestables: cleanedHarvestables,
             fishing: cleanedFishing,
+            localTreasures: cleanedLocalTreasures,
             renderCache: cleanedRenderCache
         });
     }
@@ -96,7 +100,8 @@ function initializeRadarRenderer() {
             dungeonsHandler: handlers.dungeons,
             wispCageHandler: handlers.wispCage,
             fishingHandler: handlers.fishing,
-            mistsDungeonHandler: handlers.mistsDungeon
+            mistsDungeonHandler: handlers.mistsDungeon,
+            localTreasuresHandler: handlers.localTreasures
         },
         drawings: {
             mapsDrawing: drawings.maps,
@@ -108,7 +113,8 @@ function initializeRadarRenderer() {
             wispCageDrawing: drawings.wispCage,
             fishingDrawing: drawings.fishing,
             mistsWispDrawing: drawings.mistsWisp,
-            mistsDungeonDrawing: drawings.mistsDungeon
+            mistsDungeonDrawing: drawings.mistsDungeon,
+            localTreasuresDrawing: drawings.localTreasures
         },
         drawingUtils
     });
@@ -130,6 +136,7 @@ function clearHandlers(preserveSession = false) {
     handlers.mobs.Clear();
     handlers.players.Clear();
     handlers.wispCage.Clear();
+    handlers.localTreasures.Clear();
 
     if (!preserveSession) {
         try {
@@ -166,6 +173,7 @@ export async function initRadar() {
         handlers.wispCage = new WispCageHandler();
         handlers.fishing = new FishingHandler();
         handlers.mistsDungeon = new MistsDungeonHandler();
+        handlers.localTreasures = new LocalTreasuresHandler();
 
         drawings.maps = new MapDrawing();
         drawings.harvestables = new HarvestablesDrawing();
@@ -177,6 +185,7 @@ export async function initRadar() {
         drawings.mistsWisp = new MistsWispDrawing();
         drawings.fishing = new FishingDrawing();
         drawings.mistsDungeon = new MistsDungeonDrawing();
+        drawings.localTreasures = new LocalTreasuresDrawing();
 
         window.harvestablesHandler = handlers.harvestables;
         window.mobsHandler = handlers.mobs;
@@ -192,7 +201,8 @@ export async function initRadar() {
                 dungeonsHandler: handlers.dungeons,
                 fishingHandler: handlers.fishing,
                 wispCageHandler: handlers.wispCage,
-                mistsDungeonHandler: handlers.mistsDungeon
+                mistsDungeonHandler: handlers.mistsDungeon,
+                localTreasuresHandler: handlers.localTreasures
             },
             map,
             radarRenderer: null

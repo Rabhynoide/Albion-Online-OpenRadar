@@ -406,6 +406,7 @@ export function onEvent(Parameters) {
             fishingHandler.removeFish(id);
             wispCageHandler.removeCage(id);
             handlers.mistsDungeonHandler?.removePortal(id);
+            handlers.localTreasuresHandler?.removeTreasure(id);
             break;
 
         case EventCodes.Move:
@@ -524,6 +525,13 @@ export function onEvent(Parameters) {
 
         case EventCodes.CagedObjectStateUpdated:
             wispCageHandler.cageOpenedEvent(Parameters);
+            break;
+
+        // issue #4: buried treasure chests, temporary rich resource nodes, smuggler piles, and
+        // timed special/anniversary events - a full parallel-array resync, unlike every other
+        // detection type here (see PROTOCOL18_PARAM_LAYOUTS.md's LocalTreasuresUpdate section).
+        case EventCodes.LocalTreasuresUpdate:
+            handlers.localTreasuresHandler?.handleLocalTreasuresUpdate(Parameters);
             break;
 
         case EventCodes.NewFishingZoneObject:

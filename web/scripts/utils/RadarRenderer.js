@@ -170,6 +170,13 @@ export class RadarRenderer {
             );
         }
 
+        if (this.handlers.localTreasuresHandler && this.drawings.localTreasuresDrawing) {
+            this.drawings.localTreasuresDrawing.interpolate(
+                this.handlers.localTreasuresHandler.treasuresList,
+                this.lpX, this.lpY, t
+            );
+        }
+
         if (this.handlers.dungeonsHandler && this.drawings.dungeonsDrawing) {
             this.drawings.dungeonsDrawing.interpolate(
                 this.handlers.dungeonsHandler.dungeonList,
@@ -279,6 +286,13 @@ export class RadarRenderer {
                 this.drawings.fishingDrawing.draw(
                     context,
                     this.handlers.fishingHandler.fishes
+                );
+            }
+
+            if (this.drawings.localTreasuresDrawing && this.handlers.localTreasuresHandler) {
+                this.drawings.localTreasuresDrawing.invalidate(
+                    context,
+                    this.handlers.localTreasuresHandler.treasuresList
                 );
             }
 

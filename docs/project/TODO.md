@@ -16,7 +16,7 @@
 | Chests | basic | rarity persisted on entity (#75); drawing-layer color resolution and rarity source slot still open |
 | Fishing | working | issue #25 closed via #73 + #85. Event 61 (end-of-fishing) logged but not visualized. |
 | GPS / Avalon Roads | working | static open-world graph from `cluster/world.json`, road discovery by play, 24h staleness confirmed from game data, manual "Remove this route" for roads that reset early (#5) - see `docs/technical/AVALON_ROADS_GPS.md`. Per-instance road duration still unobservable. Optional shared roads database via self-hosted `cmd/hub` (Docker, SQLite, shared-secret auth) - radar backend relays/falls back automatically, see `cmd/hub/README.md`. |
-| Local Treasures | working | buried chests, temporary resources, smuggler piles, timed events via `LocalTreasuresUpdate` (event 285); `SPECIAL_EVENT_*` excluded as mob-detection duplicates. Single shared icon in v1, no per-type icons or countdown yet. |
+| Local Treasures | working | buried chests, temporary resources, smuggler piles, timed events via `LocalTreasuresUpdate` (event 285, #4); `SPECIAL_EVENT_*` excluded as mob-detection duplicates. Single shared icon in v1, no per-type icons or countdown yet. |
 
 ## v2.3 backlog
 
@@ -72,6 +72,14 @@
   current roster live off `EventRouter.js`; `PlayersHandler.isExcludedPlayer()` now checks it
   alongside the Ignore List, consulted by `maybeAlert()`, `getFilteredPlayers()`, and
   `getThreatPlayers()` identically to how PLAY-2 wired the Ignore List in.
+- **TREASURE-1** (#4, "Détection des trésors enfoui"): this had actually been fully built
+  (`LocalTreasuresHandler.js`/`LocalTreasuresDrawing.js`, `EventRouter.js`/`RadarRenderer.js`
+  wiring, a settings toggle) on a separate `treasures-detector` branch that was never merged -
+  `main` never had it despite this doc's earlier "working" status claiming otherwise. Ported
+  the feature onto current `main` (adapting the wiring to everything that landed since the
+  branch diverged - GPS, PLAY-1/2/3, the backend/frontend optimization pass). Buried treasure
+  chests, temporary rich resource nodes, smuggler piles, and timed special/anniversary events
+  now actually render on the radar, gated behind `settingLocalTreasures`.
 
 ## Closed in v2.2
 

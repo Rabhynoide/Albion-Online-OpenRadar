@@ -67,7 +67,8 @@ describe('EventRouter', () => {
             dungeonsHandler: {removeDungeon: vi.fn(), dungeonEvent: vi.fn()},
             fishingHandler: {removeFish: vi.fn(), newFishEvent: vi.fn(), fishingEnd: vi.fn()},
             wispCageHandler: {removeCage: vi.fn(), newCageEvent: vi.fn(), cageOpenedEvent: vi.fn()},
-            mistsDungeonHandler: {addPortal: vi.fn(), removePortal: vi.fn(), cleanupStaleEntities: vi.fn(), Clear: vi.fn()}
+            mistsDungeonHandler: {addPortal: vi.fn(), removePortal: vi.fn(), cleanupStaleEntities: vi.fn(), Clear: vi.fn()},
+            localTreasuresHandler: {handleLocalTreasuresUpdate: vi.fn(), removeTreasure: vi.fn()}
         };
 
         map = {id: -1, hX: 0, hY: 0, isBZ: false};
@@ -750,6 +751,34 @@ describe('EventRouter', () => {
             EventRouter.onEvent({0: 2547, 252: EventCodes.Leave});
 
             expect(handlers.mistsDungeonHandler.removePortal).toHaveBeenCalledWith(2547);
+        });
+
+        // @verified 2026-07-30: live capture confirmed individual local-treasure entity ids
+        // receive a normal single-id Leave event, same as every other entity type.
+        test('Leave event removes the entity from localTreasuresHandler', () => {
+            EventRouter.onEvent({0: 78042, 252: EventCodes.Leave});
+
+            expect(handlers.localTreasuresHandler.removeTreasure).toHaveBeenCalledWith(78042);
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // onEvent LocalTreasuresUpdate (285) - issue #4, buried treasures/temp resources/smuggler
+    // piles/timed events. See PROTOCOL18_PARAM_LAYOUTS.md and LocalTreasuresHandler.js.
+    // -------------------------------------------------------------------------
+    describe('onEvent LocalTreasuresUpdate', () => {
+        // @verified 2026-07-30: live capture parameter shape, forwarded as-is to the handler.
+        test('LocalTreasuresUpdate forwards Parameters to localTreasuresHandler', () => {
+            const params = {
+                0: 285, 252: EventCodes.LocalTreasuresUpdate,
+                4: [77706, 78042], 5: [40, -310, 121, -141],
+                6: [639210373950865300, 639210375691831200], 7: [639211236063285500, 0],
+                8: ['SPECIAL_EVENT_1', 'CHEST']
+            };
+
+            EventRouter.onEvent(params);
+
+            expect(handlers.localTreasuresHandler.handleLocalTreasuresUpdate).toHaveBeenCalledWith(params);
         });
     });
 
