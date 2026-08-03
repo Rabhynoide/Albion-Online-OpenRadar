@@ -9,6 +9,7 @@ import {readAoBinDumpJSON} from '../__fixtures__/realDatabases.js';
 import zonesDatabase from '../data/ZonesDatabase.js';
 import zoneGraph from '../data/ZoneGraph.js';
 import partyRoster from '../data/PartyRoster.js';
+import marketHandler from '../data/MarketHandler.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const zonesJsonPath = join(here, '..', '..', 'ao-bin-dumps', 'zones.json');
@@ -685,6 +686,42 @@ describe('EventRouter', () => {
 
             expect(clearHandlers).not.toHaveBeenCalled();
             expect(radarRenderer.setMap).not.toHaveBeenCalled();
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // onResponse Market (opcodes 81/82) - issue #23, Market Prices Part B. See
+    // docs/technical/PROTOCOL18_PARAM_LAYOUTS.md's "Marketplace operations" section and
+    // MarketHandler.js.
+    // -------------------------------------------------------------------------
+    describe('onResponse Market', () => {
+        let handleAuctionGetOffersSpy;
+        let handleAuctionGetRequestsSpy;
+
+        beforeEach(() => {
+            handleAuctionGetOffersSpy = vi.spyOn(marketHandler, 'handleAuctionGetOffers').mockImplementation(() => {});
+            handleAuctionGetRequestsSpy = vi.spyOn(marketHandler, 'handleAuctionGetRequests').mockImplementation(() => {});
+        });
+
+        afterEach(() => {
+            handleAuctionGetOffersSpy.mockRestore();
+            handleAuctionGetRequestsSpy.mockRestore();
+        });
+
+        test('onResponse routes AuctionGetOffers (P[253]=81) to marketHandler.handleAuctionGetOffers with the full params', () => {
+            const p = {0: ['{"ItemTypeId":"T4_BAG"}'], 253: OperationCodes.AuctionGetOffers};
+
+            EventRouter.onResponse(p, clearHandlers);
+
+            expect(handleAuctionGetOffersSpy).toHaveBeenCalledWith(p);
+        });
+
+        test('onResponse routes AuctionGetRequests (P[253]=82) to marketHandler.handleAuctionGetRequests with the full params', () => {
+            const p = {0: ['{"ItemTypeId":"T4_BAG"}'], 253: OperationCodes.AuctionGetRequests};
+
+            EventRouter.onResponse(p, clearHandlers);
+
+            expect(handleAuctionGetRequestsSpy).toHaveBeenCalledWith(p);
         });
     });
 

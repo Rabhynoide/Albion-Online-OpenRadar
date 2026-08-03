@@ -7,6 +7,7 @@ import {CATEGORIES} from '../constants/LoggerConstants.js';
 import zonesDatabase from '../data/ZonesDatabase.js';
 import zoneGraph from '../data/ZoneGraph.js';
 import partyRoster from '../data/PartyRoster.js';
+import marketHandler from '../data/MarketHandler.js';
 
 function syncMapIsBZ() {
     if (!map) return;
@@ -620,6 +621,16 @@ export function onResponse(Parameters, clearHandlersCallback) {
     }
     if (Parameters[253] == OperationCodes.Join) {
         handleJoinResponse(Parameters, clearHandlersCallback);
+        return;
+    }
+    // Issue #23 (Market Prices, Part B): passively observe the player's own marketplace
+    // browsing - never sends queries of its own, only reads what the client already asked for.
+    if (Parameters[253] == OperationCodes.AuctionGetOffers) {
+        marketHandler.handleAuctionGetOffers(Parameters);
+        return;
+    }
+    if (Parameters[253] == OperationCodes.AuctionGetRequests) {
+        marketHandler.handleAuctionGetRequests(Parameters);
     }
 }
 

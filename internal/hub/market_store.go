@@ -56,6 +56,73 @@ func (s *Store) UpsertPrices(entries []adp.PriceEntry) error {
 	return nil
 }
 
+// UpsertSellObservations updates only the sell_price_* columns for each entry (BuyPriceMin/Max
+// on each entry are ignored), leaving any existing buy_price_* columns - learned from a
+// separate UpsertBuyObservations call - untouched. Issue #23 (Part B): a client passively
+// observing AuctionGetOffers only ever learns the sell side in one shot, so a full UpsertPrices
+// here would wrongly zero out whatever buy-side data was already cached. A brand-new row gets
+// 0/"" placeholders for the buy side (not NULL) so GetPrices/GetCachedPrices's plain int/string
+// Scan destinations keep working unchanged until a buy-side observation fills them in.
+func (s *Store) UpsertSellObservations(entries []adp.PriceEntry) error {
+	now := time.Now().UTC()
+	for _, e := range entries {
+		if _, err := s.db.Exec(`
+			INSERT INTO market_prices (
+				item_id, city, quality,
+				sell_price_min, sell_price_min_date,
+				sell_price_max, sell_price_max_date,
+				buy_price_min, buy_price_min_date,
+				buy_price_max, buy_price_max_date,
+				cached_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, 0, '', 0, '', ?)
+			ON CONFLICT (item_id, city, quality) DO UPDATE SET
+				sell_price_min = excluded.sell_price_min,
+				sell_price_min_date = excluded.sell_price_min_date,
+				sell_price_max = excluded.sell_price_max,
+				sell_price_max_date = excluded.sell_price_max_date,
+				cached_at = excluded.cached_at
+		`, e.ItemID, e.City, e.Quality,
+			e.SellPriceMin, e.SellPriceMinDate,
+			e.SellPriceMax, e.SellPriceMaxDate,
+			now,
+		); err != nil {
+			return fmt.Errorf("upsert sell observation %s/%s/%d: %w", e.ItemID, e.City, e.Quality, err)
+		}
+	}
+	return nil
+}
+
+// UpsertBuyObservations is UpsertSellObservations's mirror for buy-side (AuctionGetRequests)
+// observations - see its doc comment for why this can't just be a full UpsertPrices call.
+func (s *Store) UpsertBuyObservations(entries []adp.PriceEntry) error {
+	now := time.Now().UTC()
+	for _, e := range entries {
+		if _, err := s.db.Exec(`
+			INSERT INTO market_prices (
+				item_id, city, quality,
+				sell_price_min, sell_price_min_date,
+				sell_price_max, sell_price_max_date,
+				buy_price_min, buy_price_min_date,
+				buy_price_max, buy_price_max_date,
+				cached_at
+			) VALUES (?, ?, ?, 0, '', 0, '', ?, ?, ?, ?, ?)
+			ON CONFLICT (item_id, city, quality) DO UPDATE SET
+				buy_price_min = excluded.buy_price_min,
+				buy_price_min_date = excluded.buy_price_min_date,
+				buy_price_max = excluded.buy_price_max,
+				buy_price_max_date = excluded.buy_price_max_date,
+				cached_at = excluded.cached_at
+		`, e.ItemID, e.City, e.Quality,
+			e.BuyPriceMin, e.BuyPriceMinDate,
+			e.BuyPriceMax, e.BuyPriceMaxDate,
+			now,
+		); err != nil {
+			return fmt.Errorf("upsert buy observation %s/%s/%d: %w", e.ItemID, e.City, e.Quality, err)
+		}
+	}
+	return nil
+}
+
 // GetPrices returns every cached row still fresh enough to trust (cached within
 // marketStaleAfter) for each (itemID, city, quality) combination, and separately lists the
 // combinations that are either never-cached or stale, so the caller knows what to re-fetch

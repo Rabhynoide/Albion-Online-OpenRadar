@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +48,95 @@ func withMarketConfig(t *testing.T, dir string, cfg capture.Config) {
 	t.Helper()
 	if err := capture.WriteConfig(dir, cfg); err != nil {
 		t.Fatalf("WriteConfig: %v", err)
+	}
+}
+
+// @verified 2026-08-03 (issue #23, Part B): a sell-side observation relayed while the Hub is
+// configured must actually reach it and be queryable back out.
+func TestMarketAPI_PostObservationsForwardsToHubWhenEnabled(t *testing.T) {
+	dir := t.TempDir()
+	hubSrv := fakeMarketHub(t, "secret", nil)
+	withMarketConfig(t, dir, capture.Config{Hub: capture.HubConfig{Enabled: true, URL: hubSrv.URL, Secret: "secret"}})
+
+	api := NewMarketAPI(dir)
+	mux := newMarketTestMux(api)
+	body, _ := json.Marshal(observationRequest{
+		Side:    "sell",
+		Entries: []adp.PriceEntry{{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, SellPriceMin: 8499}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/market/observations", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status %d, want 204", rec.Code)
+	}
+
+	// Query the Hub directly to confirm the observation actually landed.
+	getReq, _ := http.NewRequest(http.MethodGet, hubSrv.URL+"/api/market/prices?items=T4_BAG&locations=Caerleon&qualities=1", http.NoBody)
+	getReq.Header.Set(hub.SecretHeader, "secret")
+	getResp, err := http.DefaultClient.Do(getReq)
+	if err != nil {
+		t.Fatalf("query hub: %v", err)
+	}
+	defer getResp.Body.Close()
+	var got []adp.PriceEntry
+	if err := json.NewDecoder(getResp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 1 || got[0].SellPriceMin != 8499 {
+		t.Fatalf("observation did not land on the Hub: %+v", got)
+	}
+}
+
+// @verified 2026-08-03: without a Hub configured, there's nowhere for an observation to go -
+// the endpoint must still respond 204 (never surface an error to the browser for this).
+func TestMarketAPI_PostObservationsNoOpsWithoutHub(t *testing.T) {
+	api := NewMarketAPI(t.TempDir())
+	mux := newMarketTestMux(api)
+	body, _ := json.Marshal(observationRequest{
+		Side:    "sell",
+		Entries: []adp.PriceEntry{{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, SellPriceMin: 8499}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/market/observations", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status %d, want 204", rec.Code)
+	}
+}
+
+// @verified 2026-08-03: a Hub configured but unreachable must not surface as an error either -
+// the contribution is best-effort, same philosophy as RoadsAPI.forwardToHub.
+func TestMarketAPI_PostObservationsSilentWhenHubUnreachable(t *testing.T) {
+	dir := t.TempDir()
+	withMarketConfig(t, dir, capture.Config{Hub: capture.HubConfig{Enabled: true, URL: "http://127.0.0.1:1", Secret: "secret"}})
+
+	api := NewMarketAPI(dir)
+	mux := newMarketTestMux(api)
+	body, _ := json.Marshal(observationRequest{
+		Side:    "sell",
+		Entries: []adp.PriceEntry{{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, SellPriceMin: 8499}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/market/observations", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status %d, want 204", rec.Code)
+	}
+}
+
+func TestMarketAPI_PostObservationsMalformedBodyIsBadRequest(t *testing.T) {
+	api := NewMarketAPI(t.TempDir())
+	mux := newMarketTestMux(api)
+	req := httptest.NewRequest(http.MethodPost, "/api/market/observations", bytes.NewReader([]byte("{not json")))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", rec.Code)
 	}
 }
 

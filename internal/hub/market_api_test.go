@@ -191,7 +191,7 @@ func TestMarketAPI_GetDefaultsLocationsAndQualitiesWhenOmitted(t *testing.T) {
 
 func TestMarketAPI_PostWithoutSecretRejected(t *testing.T) {
 	mux, _ := newTestMarketAPI(t, fakeADPResponse(nil))
-	body, _ := json.Marshal([]adp.PriceEntry{{ItemID: "T4_BAG", City: "Caerleon", Quality: 1}})
+	body, _ := json.Marshal(observationRequest{Entries: []adp.PriceEntry{{ItemID: "T4_BAG", City: "Caerleon", Quality: 1}}})
 	req := httptest.NewRequest(http.MethodPost, "/api/market/prices", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -202,8 +202,8 @@ func TestMarketAPI_PostWithoutSecretRejected(t *testing.T) {
 
 func TestMarketAPI_PostIngestsThenGetIsCacheHit(t *testing.T) {
 	mux, calls := newTestMarketAPI(t, fakeADPResponse(nil))
-	entry := adp.PriceEntry{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, SellPriceMin: 8499}
-	body, _ := json.Marshal([]adp.PriceEntry{entry})
+	entry := adp.PriceEntry{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, SellPriceMin: 8499, BuyPriceMax: 100}
+	body, _ := json.Marshal(observationRequest{Entries: []adp.PriceEntry{entry}})
 
 	postRec := httptest.NewRecorder()
 	mux.ServeHTTP(postRec, authedRequest(http.MethodPost, "/api/market/prices", body))
@@ -217,11 +217,77 @@ func TestMarketAPI_PostIngestsThenGetIsCacheHit(t *testing.T) {
 	if err := json.NewDecoder(getRec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(got) != 1 || got[0].SellPriceMin != 8499 {
+	if len(got) != 1 || got[0].SellPriceMin != 8499 || got[0].BuyPriceMax != 100 {
 		t.Errorf("got = %+v", got)
 	}
 	if *calls != 0 {
 		t.Errorf("ADP calls = %d, want 0 (POST already cached it)", *calls)
+	}
+}
+
+func TestMarketAPI_PostSideSellPreservesExistingBuyData(t *testing.T) {
+	mux, _ := newTestMarketAPI(t, fakeADPResponse(nil))
+	full, _ := json.Marshal(observationRequest{Side: "both", Entries: []adp.PriceEntry{
+		{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, SellPriceMin: 1, BuyPriceMax: 999},
+	}})
+	mux.ServeHTTP(httptest.NewRecorder(), authedRequest(http.MethodPost, "/api/market/prices", full))
+
+	sellOnly, _ := json.Marshal(observationRequest{Side: "sell", Entries: []adp.PriceEntry{
+		{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, SellPriceMin: 8499},
+	}})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, authedRequest(http.MethodPost, "/api/market/prices", sellOnly))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST status %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	getRec := httptest.NewRecorder()
+	mux.ServeHTTP(getRec, authedRequest(http.MethodGet, "/api/market/prices?items=T4_BAG&locations=Caerleon&qualities=1", nil))
+	var got []adp.PriceEntry
+	if err := json.NewDecoder(getRec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 1 || got[0].SellPriceMin != 8499 {
+		t.Fatalf("sell side not updated: %+v", got)
+	}
+	if got[0].BuyPriceMax != 999 {
+		t.Errorf("buy side clobbered by a sell-only POST: %+v", got)
+	}
+}
+
+func TestMarketAPI_PostSideBuyPreservesExistingSellData(t *testing.T) {
+	mux, _ := newTestMarketAPI(t, fakeADPResponse(nil))
+	full, _ := json.Marshal(observationRequest{Side: "both", Entries: []adp.PriceEntry{
+		{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, SellPriceMin: 8499, BuyPriceMax: 1},
+	}})
+	mux.ServeHTTP(httptest.NewRecorder(), authedRequest(http.MethodPost, "/api/market/prices", full))
+
+	buyOnly, _ := json.Marshal(observationRequest{Side: "buy", Entries: []adp.PriceEntry{
+		{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, BuyPriceMax: 999},
+	}})
+	mux.ServeHTTP(httptest.NewRecorder(), authedRequest(http.MethodPost, "/api/market/prices", buyOnly))
+
+	getRec := httptest.NewRecorder()
+	mux.ServeHTTP(getRec, authedRequest(http.MethodGet, "/api/market/prices?items=T4_BAG&locations=Caerleon&qualities=1", nil))
+	var got []adp.PriceEntry
+	if err := json.NewDecoder(getRec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 1 || got[0].BuyPriceMax != 999 {
+		t.Fatalf("buy side not updated: %+v", got)
+	}
+	if got[0].SellPriceMin != 8499 {
+		t.Errorf("sell side clobbered by a buy-only POST: %+v", got)
+	}
+}
+
+func TestMarketAPI_PostInvalidSideIsBadRequest(t *testing.T) {
+	mux, _ := newTestMarketAPI(t, fakeADPResponse(nil))
+	body, _ := json.Marshal(observationRequest{Side: "trade", Entries: []adp.PriceEntry{{ItemID: "T4_BAG"}}})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, authedRequest(http.MethodPost, "/api/market/prices", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", rec.Code)
 	}
 }
 

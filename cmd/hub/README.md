@@ -30,7 +30,9 @@ for the full design.
   (unauthenticated, for container healthchecks).
 - `internal/hub/market_api.go` — `GET/POST /api/market/prices` (secret required); `GET` serves
   from cache, falling back to the public Data Project API (`internal/adp`) for anything missing
-  or stale, and caching the result.
+  or stale, and caching the result. `POST` accepts `{side, entries}` from radar clients
+  contributing prices observed live in-game (issue #23) - `side: "sell"`/`"buy"` updates only
+  that half of a cached row, so a passive one-sided observation can't wipe out the other side.
 
 Both live in the **same Go module** as `cmd/radar` (`github.com/nospy/albion-openradar`) — no
 separate `go.mod`/workspace.
@@ -130,9 +132,4 @@ copy instead of each one hitting the public API independently.
 ## Explicitly out of scope (v1)
 
 - Per-user accounts/attribution - one shared secret per group, not individual logins.
-- Live in-game contribution to the market-price cache (detecting marketplace browsing over
-  Photon and POSTing observed prices) - the Hub's ingestion endpoint exists
-  (`POST /api/market/prices`) and is ready for this, but no radar-client capture/decode work
-  has been done yet. See [`docs/technical/MARKET_PRICES.md`](../../docs/technical/MARKET_PRICES.md)'s
-  "Not implemented yet" section.
 - Conflict resolution smarter than last-write-wins upsert.

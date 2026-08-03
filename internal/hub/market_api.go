@@ -81,16 +81,39 @@ func (a *MarketAPI) handleGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, fresh)
 }
 
-// handlePost accepts a batch of price observations and caches them directly - a generic
-// ingestion endpoint. Nothing calls this yet (no live in-game capture exists), but the shape
-// is reusable as-is once that lands (see docs/technical/MARKET_PRICES.md).
+// observationRequest is the ingestion payload for client-submitted price observations (issue
+// #23, Part B). Side matters: a client passively browsing the in-game marketplace only ever
+// observes one side of the book at a time (AuctionGetOffers -> sell, AuctionGetRequests ->
+// buy), so a plain full-row overwrite would wipe out whatever was already known about the
+// other side. Side defaults to "both" (a full-row upsert, same as the original behavior)
+// when omitted, for a caller that genuinely has complete data for every entry it submits.
+type observationRequest struct {
+	Side    string           `json:"side"`
+	Entries []adp.PriceEntry `json:"entries"`
+}
+
+// handlePost accepts a batch of price observations and caches them - either a full overwrite
+// (side "both"/omitted) or a side-preserving partial update (side "sell"/"buy").
 func (a *MarketAPI) handlePost(w http.ResponseWriter, r *http.Request) {
-	var entries []adp.PriceEntry
-	if err := json.NewDecoder(r.Body).Decode(&entries); err != nil {
+	var body observationRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := a.store.UpsertPrices(entries); err != nil {
+
+	var err error
+	switch body.Side {
+	case "sell":
+		err = a.store.UpsertSellObservations(body.Entries)
+	case "buy":
+		err = a.store.UpsertBuyObservations(body.Entries)
+	case "", "both":
+		err = a.store.UpsertPrices(body.Entries)
+	default:
+		http.Error(w, `side must be "sell", "buy", "both", or omitted`, http.StatusBadRequest)
+		return
+	}
+	if err != nil {
 		http.Error(w, "persist: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

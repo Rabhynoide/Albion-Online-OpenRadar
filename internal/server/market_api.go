@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -53,6 +54,53 @@ func NewMarketAPI(appDir string) *MarketAPI {
 
 func (a *MarketAPI) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/market/prices", a.handleGet)
+	mux.HandleFunc("POST /api/market/observations", a.handlePostObservations)
+}
+
+// observationRequest mirrors internal/hub's own observationRequest wire shape (kept as a
+// separate local type rather than exported/shared - it's two fields, not worth coupling this
+// package to internal/hub's internals for).
+type observationRequest struct {
+	Side    string           `json:"side"`
+	Entries []adp.PriceEntry `json:"entries"`
+}
+
+// handlePostObservations relays prices the player's own client observed while browsing the
+// in-game marketplace (issue #23, Part B - see web/scripts/handlers/MarketHandler.js) to the
+// configured Hub. Best-effort and silent: without a Hub there's nowhere for these to go (the
+// public API is read-only), so this always responds 204 regardless of whether a Hub is
+// configured or whether the forward actually succeeded - same philosophy as
+// RoadsAPI.forwardToHub, a contribution failing must never surface as a browser-visible error.
+func (a *MarketAPI) handlePostObservations(w http.ResponseWriter, r *http.Request) {
+	var body observationRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if cfg, _ := capture.ReadConfig(a.appDir); cfg.Hub.Enabled {
+		a.forwardObservations(cfg.Hub, body)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *MarketAPI) forwardObservations(cfg capture.HubConfig, body observationRequest) {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return
+	}
+	req, err := http.NewRequest(http.MethodPost, cfg.URL+"/api/market/prices", bytes.NewReader(payload))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(hub.SecretHeader, cfg.Secret)
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return
+	}
+	resp.Body.Close()
 }
 
 func (a *MarketAPI) handleGet(w http.ResponseWriter, r *http.Request) {

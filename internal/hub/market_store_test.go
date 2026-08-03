@@ -17,6 +17,93 @@ func sampleEntry(itemID, city string, quality int) adp.PriceEntry {
 	}
 }
 
+// @verified 2026-08-03 (issue #23, Part B): a sell-side-only observation must not wipe out
+// buy-side data learned from a separate earlier observation, and vice versa - a passive client
+// browsing AuctionGetOffers only ever learns one side at a time.
+func TestMarketStore_SellObservationDoesNotClobberExistingBuyData(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.UpsertBuyObservations([]adp.PriceEntry{
+		{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, BuyPriceMin: 10, BuyPriceMax: 50},
+	}); err != nil {
+		t.Fatalf("UpsertBuyObservations: %v", err)
+	}
+
+	if err := s.UpsertSellObservations([]adp.PriceEntry{
+		{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, SellPriceMin: 100, SellPriceMax: 200},
+	}); err != nil {
+		t.Fatalf("UpsertSellObservations: %v", err)
+	}
+
+	found, _, err := s.GetPrices([]string{"T4_BAG"}, []string{"Caerleon"}, []int{1})
+	if err != nil {
+		t.Fatalf("GetPrices: %v", err)
+	}
+	if len(found) != 1 {
+		t.Fatalf("found = %+v, want 1 row", found)
+	}
+	if found[0].SellPriceMin != 100 || found[0].SellPriceMax != 200 {
+		t.Errorf("sell side not applied: %+v", found[0])
+	}
+	if found[0].BuyPriceMin != 10 || found[0].BuyPriceMax != 50 {
+		t.Errorf("buy side was clobbered: %+v", found[0])
+	}
+}
+
+// @verified 2026-08-03 (issue #23, Part B): the mirror case - a buy-side observation must
+// preserve previously-learned sell-side data.
+func TestMarketStore_BuyObservationDoesNotClobberExistingSellData(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.UpsertSellObservations([]adp.PriceEntry{
+		{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, SellPriceMin: 100, SellPriceMax: 200},
+	}); err != nil {
+		t.Fatalf("UpsertSellObservations: %v", err)
+	}
+
+	if err := s.UpsertBuyObservations([]adp.PriceEntry{
+		{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, BuyPriceMin: 10, BuyPriceMax: 50},
+	}); err != nil {
+		t.Fatalf("UpsertBuyObservations: %v", err)
+	}
+
+	found, _, err := s.GetPrices([]string{"T4_BAG"}, []string{"Caerleon"}, []int{1})
+	if err != nil {
+		t.Fatalf("GetPrices: %v", err)
+	}
+	if len(found) != 1 {
+		t.Fatalf("found = %+v, want 1 row", found)
+	}
+	if found[0].SellPriceMin != 100 || found[0].SellPriceMax != 200 {
+		t.Errorf("sell side was clobbered: %+v", found[0])
+	}
+	if found[0].BuyPriceMin != 10 || found[0].BuyPriceMax != 50 {
+		t.Errorf("buy side not applied: %+v", found[0])
+	}
+}
+
+// @verified 2026-08-03: a fresh row with only a sell-side observation must not be reported
+// as "missing" for the buy side too - GetPrices only tracks staleness, not per-side gaps
+// (matches its existing single-row-per-key semantics; the caller can't yet observe just the
+// missing half of a row).
+func TestMarketStore_SellOnlyObservationOnNewRowHasZeroBuySide(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.UpsertSellObservations([]adp.PriceEntry{
+		{ItemID: "T4_BAG", City: "Caerleon", Quality: 1, SellPriceMin: 100, SellPriceMax: 200},
+	}); err != nil {
+		t.Fatalf("UpsertSellObservations: %v", err)
+	}
+
+	found, missing, err := s.GetPrices([]string{"T4_BAG"}, []string{"Caerleon"}, []int{1})
+	if err != nil {
+		t.Fatalf("GetPrices: %v", err)
+	}
+	if len(missing) != 0 {
+		t.Errorf("missing = %+v, want none (row exists and is fresh)", missing)
+	}
+	if len(found) != 1 || found[0].BuyPriceMin != 0 || found[0].BuyPriceMax != 0 {
+		t.Errorf("found = %+v, want buy side defaulted to 0", found)
+	}
+}
+
 func TestMarketStore_GetPricesOnEmptyStoreReportsEverythingMissing(t *testing.T) {
 	s := newTestStore(t)
 
