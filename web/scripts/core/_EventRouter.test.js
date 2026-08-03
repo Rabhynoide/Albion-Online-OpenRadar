@@ -1,11 +1,11 @@
 import {describe, test, expect, beforeAll, beforeEach, afterEach, vi} from 'vitest';
-import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import * as EventRouter from './EventRouter.js';
 import {EventCodes} from '../utils/EventCodes.js';
 import {OperationCodes} from '../utils/OperationCodes.js';
 import {loadFixture, normalizeParams} from '../__fixtures__/loader.js';
+import {readAoBinDumpJSON} from '../__fixtures__/realDatabases.js';
 import zonesDatabase from '../data/ZonesDatabase.js';
 import zoneGraph from '../data/ZoneGraph.js';
 import partyRoster from '../data/PartyRoster.js';
@@ -14,7 +14,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const zonesJsonPath = join(here, '..', '..', 'ao-bin-dumps', 'zones.json');
 
 beforeAll(() => {
-    zonesDatabase.zones = JSON.parse(readFileSync(zonesJsonPath, 'utf8'));
+    zonesDatabase.zones = readAoBinDumpJSON(zonesJsonPath);
     zonesDatabase.loaded = true;
 });
 

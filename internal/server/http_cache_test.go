@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/nospy/albion-openradar/internal/logger"
@@ -196,6 +197,74 @@ func TestRangeStillWorksOnIdentityAssets(t *testing.T) {
 				t.Errorf("body = %d bytes, want 100", rec.Body.Len())
 			}
 		})
+	}
+}
+
+// readAsset must decompress a .gz-only asset for a client that doesn't accept gzip - assets
+// like web/ao-bin-dumps/*.json.gz ship with no plain sibling committed (only the pre-compressed
+// file), and the identity path (fs.ReadFile(fsys, urlPath)) would 404 without this fallback.
+func TestReadAsset_GzOnlySiblingDecompressesForIdentityClient(t *testing.T) {
+	var gzBuf bytes.Buffer
+	gz := gzip.NewWriter(&gzBuf)
+	if _, err := gz.Write([]byte(`{"hello":"world"}`)); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+
+	fsys := fstest.MapFS{
+		"data.json.gz": &fstest.MapFile{Data: gzBuf.Bytes()},
+	}
+
+	body, gzipped, err := readAsset(fsys, "data.json", false)
+	if err != nil {
+		t.Fatalf("readAsset: %v", err)
+	}
+	if gzipped {
+		t.Error("gzipped = true, want false (identity client)")
+	}
+	if string(body) != `{"hello":"world"}` {
+		t.Errorf("body = %q, want the decompressed JSON", body)
+	}
+}
+
+// Regression guard: when the client DOES accept gzip and a .gz sibling exists, readAsset must
+// keep serving the pre-compressed bytes directly (no unnecessary decompress+recompress).
+func TestReadAsset_GzOnlySiblingServedDirectlyForGzipClient(t *testing.T) {
+	var gzBuf bytes.Buffer
+	gz := gzip.NewWriter(&gzBuf)
+	if _, err := gz.Write([]byte(`{"hello":"world"}`)); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+
+	fsys := fstest.MapFS{
+		"data.json.gz": &fstest.MapFile{Data: gzBuf.Bytes()},
+	}
+
+	body, gzipped, err := readAsset(fsys, "data.json", true)
+	if err != nil {
+		t.Fatalf("readAsset: %v", err)
+	}
+	if !gzipped {
+		t.Error("gzipped = false, want true (gzip-accepting client)")
+	}
+	if !bytes.Equal(body, gzBuf.Bytes()) {
+		t.Error("body does not match the pre-compressed .gz sibling bytes")
+	}
+}
+
+// Neither a plain file nor a .gz sibling exists - must still 404, not panic or loop.
+func TestReadAsset_NeitherPlainNorGzExistsReturnsError(t *testing.T) {
+	fsys := fstest.MapFS{}
+
+	_, _, err := readAsset(fsys, "missing.json", false)
+
+	if err == nil {
+		t.Fatal("expected an error for a genuinely missing asset")
 	}
 }
 

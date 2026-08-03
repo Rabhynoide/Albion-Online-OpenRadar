@@ -6,6 +6,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -410,7 +411,19 @@ func readAsset(fsys fs.FS, urlPath string, acceptsGzip bool) (body []byte, gzipp
 
 	data, err := fs.ReadFile(fsys, urlPath)
 	if err != nil {
-		return nil, false, err
+		// Some assets only ship their pre-compressed .gz sibling on disk (e.g.
+		// web/ao-bin-dumps/*.json.gz) with no plain copy committed - decompress it so a
+		// client that doesn't accept gzip, or a Range request (which can't slice a gzip
+		// stream and always needs identity bytes), still gets a correct response instead of
+		// a 404.
+		gzData, gzErr := fs.ReadFile(fsys, urlPath+".gz")
+		if gzErr != nil {
+			return nil, false, err
+		}
+		data, err = decompressGzip(gzData)
+		if err != nil {
+			return nil, false, err
+		}
 	}
 
 	if !acceptsGzip || len(data) <= 1024 {
@@ -426,6 +439,15 @@ func readAsset(fsys fs.FS, urlPath string, acceptsGzip bool) (body []byte, gzipp
 		return nil, false, err
 	}
 	return buf.Bytes(), true, nil
+}
+
+func decompressGzip(data []byte) ([]byte, error) {
+	r, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
 }
 
 // setContentType sets Content-Type header based on file extension

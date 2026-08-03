@@ -1,14 +1,14 @@
 import {describe, test, expect, beforeAll, beforeEach} from 'vitest';
-import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import zonesDatabase from './ZonesDatabase.js';
+import {readAoBinDumpJSON} from '../__fixtures__/realDatabases.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const zonesJsonPath = join(here, '..', '..', 'ao-bin-dumps', 'zones.json');
 
 beforeAll(() => {
-    zonesDatabase.zones = JSON.parse(readFileSync(zonesJsonPath, 'utf8'));
+    zonesDatabase.zones = readAoBinDumpJSON(zonesJsonPath);
     zonesDatabase.loaded = true;
 });
 
