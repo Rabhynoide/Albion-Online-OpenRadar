@@ -257,6 +257,7 @@ func (s *HTTPServer) renderPage(w http.ResponseWriter, r *http.Request, page str
 		"resources":  "Resources",
 		"enemies":    "Enemies",
 		"chests":     "Chests",
+		"market":     "Market",
 		"ignorelist": "Ignore List",
 		"settings":   "Settings",
 	}

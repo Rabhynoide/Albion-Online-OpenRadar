@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -275,6 +276,48 @@ func TestHTMLPagesAreNoCache(t *testing.T) {
 
 	if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
 		t.Errorf("Cache-Control = %q, want %q", got, "no-cache")
+	}
+}
+
+// pageContentMarkers pairs each registered page route with a string unique to that page's own
+// content - not present on any other page (in particular not on the Radar page, the silent
+// fallback both base.gohtml and content.gohtml use for an unrecognized .Page value).
+var pageContentMarkers = []struct {
+	path   string
+	marker string
+}{
+	{"/", "mapCanvas"},
+	{"/players", "settingShowPlayers"},
+	{"/resources", "settingResourceSound"},
+	{"/enemies", "settingAllEnemies"},
+	{"/chests", "settingChestGreen"},
+	{"/market", "marketSearchInput"},
+	{"/ignorelist", "ignorePlayerInput"},
+	{"/settings", "confirmResetSettings"},
+}
+
+// Regression guard: internal/templates/layouts/base.gohtml (full page load) and
+// layouts/content.gohtml (HTMX partial swap, SPA in-app navigation) each maintain their OWN
+// {{if eq .Page "..."}} dispatch chain - by hand, not generated from a shared list. A page
+// added to one chain but not the other silently falls back to rendering the Radar page instead
+// of its own, on whichever path was missed. Confirmed as a real bug: the Market page did
+// exactly this on every full page load/refresh/direct-URL-visit for a full day after it
+// shipped, because only content.gohtml's chain had been updated.
+func TestAllPagesRenderTheirOwnContent(t *testing.T) {
+	s := newTestServer(t, "2.2.3", false)
+
+	for _, tc := range pageContentMarkers {
+		t.Run(tc.path, func(t *testing.T) {
+			full := do(s, http.MethodGet, tc.path, nil)
+			if !strings.Contains(full.Body.String(), tc.marker) {
+				t.Errorf("full page load of %s does not contain %q - likely fell back to another page", tc.path, tc.marker)
+			}
+
+			partial := do(s, http.MethodGet, tc.path, map[string]string{"Hx-Request": "true"})
+			if !strings.Contains(partial.Body.String(), tc.marker) {
+				t.Errorf("HTMX partial load of %s does not contain %q - likely fell back to another page", tc.path, tc.marker)
+			}
+		})
 	}
 }
 
