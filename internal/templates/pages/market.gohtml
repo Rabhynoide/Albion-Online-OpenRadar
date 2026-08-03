@@ -11,13 +11,51 @@
     <!-- Search -->
     <div class="card bg-base-200">
         <div class="card-body">
-            <div class="relative max-w-md">
-                <label class="flex items-center gap-2 input input-bordered input-sm w-full">
-                    <i data-lucide="search" class="w-4 h-4 text-base-content/50"></i>
-                    <input id="marketSearchInput" type="text" placeholder="Search an item (e.g. T4_BAG, sword...)"
-                           class="grow" autocomplete="off">
-                </label>
-                <ul id="marketSearchResults" class="menu bg-base-300 rounded-box mt-1 absolute w-full z-10 shadow-lg hidden max-h-72 overflow-y-auto flex-nowrap"></ul>
+            <div class="flex flex-wrap items-start gap-3">
+                <div class="relative max-w-md grow min-w-[16rem]">
+                    <label class="flex items-center gap-2 input input-bordered input-sm w-full">
+                        <i data-lucide="search" class="w-4 h-4 text-base-content/50"></i>
+                        <input id="marketSearchInput" type="text" placeholder="Search an item (e.g. T4_BAG, sword...)"
+                               class="grow" autocomplete="off">
+                    </label>
+                    <ul id="marketSearchResults" class="menu bg-base-300 rounded-box mt-1 absolute w-full z-10 shadow-lg hidden max-h-72 overflow-y-auto flex-nowrap"></ul>
+                </div>
+
+                <select id="marketFilterCategory" class="select select-bordered select-sm">
+                    <option value="">Category</option>
+                    <option value="armors">Armor</option>
+                    <option value="bags">Bags</option>
+                    <option value="capes">Capes</option>
+                    <option value="gathering">Gathering</option>
+                    <option value="head">Head</option>
+                    <option value="mounts">Mounts</option>
+                    <option value="offhands">Off-hands</option>
+                    <option value="other">Other</option>
+                    <option value="shoes">Shoes</option>
+                    <option value="vanity">Vanity</option>
+                    <option value="weapons">Weapons</option>
+                </select>
+
+                <select id="marketFilterTier" class="select select-bordered select-sm">
+                    <option value="">Tier</option>
+                    <option value="1">T1</option>
+                    <option value="2">T2</option>
+                    <option value="3">T3</option>
+                    <option value="4">T4</option>
+                    <option value="5">T5</option>
+                    <option value="6">T6</option>
+                    <option value="7">T7</option>
+                    <option value="8">T8</option>
+                </select>
+
+                <select id="marketFilterEnchant" class="select select-bordered select-sm">
+                    <option value="">Enchantment</option>
+                    <option value="0">.0</option>
+                    <option value="1">.1</option>
+                    <option value="2">.2</option>
+                    <option value="3">.3</option>
+                    <option value="4">.4</option>
+                </select>
             </div>
         </div>
     </div>
@@ -25,10 +63,20 @@
     <!-- Results -->
     <div id="marketResults" class="card bg-base-200 hidden">
         <div class="card-body">
-            <h2 class="text-xl font-semibold text-base-content mb-4 flex items-center gap-2">
-                <img id="marketResultsIcon" class="w-8 h-8" alt="" onerror="this.style.visibility='hidden'">
-                <span id="marketResultsName"></span>
-            </h2>
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 class="text-xl font-semibold text-base-content flex items-center gap-2">
+                    <img id="marketResultsIcon" class="w-8 h-8" alt="" onerror="this.style.visibility='hidden'">
+                    <span id="marketResultsName"></span>
+                </h2>
+                <select id="marketFilterQuality" class="select select-bordered select-sm w-auto">
+                    <option value="">All qualities</option>
+                    <option value="1">Normal</option>
+                    <option value="2">Good</option>
+                    <option value="3">Outstanding</option>
+                    <option value="4">Excellent</option>
+                    <option value="5">Masterpiece</option>
+                </select>
+            </div>
             <div class="overflow-x-auto">
                 <table class="table table-sm">
                     <thead>
@@ -71,10 +119,16 @@
 
             const searchInput = document.getElementById('marketSearchInput');
             const searchResults = document.getElementById('marketSearchResults');
+            const categorySelect = document.getElementById('marketFilterCategory');
+            const tierSelect = document.getElementById('marketFilterTier');
+            const enchantSelect = document.getElementById('marketFilterEnchant');
+            const qualitySelect = document.getElementById('marketFilterQuality');
             const resultsCard = document.getElementById('marketResults');
             const resultsBody = document.getElementById('marketResultsBody');
             const resultsName = document.getElementById('marketResultsName');
             const resultsIcon = document.getElementById('marketResultsIcon');
+
+            let lastFetchedEntries = [];
 
             function hideSearchResults() {
                 searchResults.classList.add('hidden');
@@ -98,23 +152,47 @@
                 searchResults.classList.remove('hidden');
             }
 
-            addListener(searchInput, 'input', () => {
-                clearTimeout(searchDebounceTimer);
-                const query = searchInput.value.trim();
+            // Mirrors the in-game marketplace's own Category/Niveau/Enchantement browse
+            // controls: they work together with or without free text, so a filter change
+            // alone (no query typed) still runs a search - matching the in-game UX where you
+            // can browse a whole category without typing anything.
+            function runSearch() {
                 const itemsDatabase = window.itemsDatabase;
-                if (query.length < 2 || !itemsDatabase?.isLoaded) {
+                if (!itemsDatabase?.isLoaded) {
                     hideSearchResults();
                     return;
                 }
-                searchDebounceTimer = setTimeout(() => {
-                    renderSearchResults(itemsDatabase.searchByName(query, 15));
-                }, 200);
+                const query = searchInput.value.trim();
+                const category = categorySelect.value;
+                const tier = tierSelect.value;
+                const enchant = enchantSelect.value;
+                if (query.length < 2 && !category && !tier && !enchant) {
+                    hideSearchResults();
+                    return;
+                }
+                renderSearchResults(itemsDatabase.searchItems({query, category, tier, enchant}, 15));
+            }
+
+            addListener(searchInput, 'input', () => {
+                clearTimeout(searchDebounceTimer);
+                searchDebounceTimer = setTimeout(runSearch, 200);
             });
+            addListener(categorySelect, 'change', runSearch);
+            addListener(tierSelect, 'change', runSearch);
+            addListener(enchantSelect, 'change', runSearch);
 
             addListener(document, 'click', (e) => {
                 if (!e.target.closest('#marketSearchInput') && !e.target.closest('#marketSearchResults')) {
                     hideSearchResults();
                 }
+            });
+
+            // Quality is per-listing, not per-item (see PROTOCOL18_PARAM_LAYOUTS.md) - it
+            // filters which already-fetched rows are shown, not the item search itself.
+            addListener(qualitySelect, 'change', () => {
+                const quality = qualitySelect.value;
+                const filtered = quality ? lastFetchedEntries.filter(e => String(e.quality) === quality) : lastFetchedEntries;
+                renderPriceRows(filtered);
             });
 
             function renderPriceRows(entries) {
@@ -150,11 +228,12 @@
                 resultsName.textContent = uniqueName;
                 resultsIcon.style.visibility = 'visible';
                 resultsIcon.src = `/images/Items/${uniqueName}.webp`;
+                qualitySelect.value = '';
                 resultsCard.classList.remove('hidden');
                 resultsBody.innerHTML = '<tr><td colspan="7" class="text-center text-base-content/50">Loading...</td></tr>';
 
-                const entries = await fetchPrices([uniqueName]);
-                renderPriceRows(entries);
+                lastFetchedEntries = await fetchPrices([uniqueName]);
+                renderPriceRows(lastFetchedEntries);
             }
         }
 
