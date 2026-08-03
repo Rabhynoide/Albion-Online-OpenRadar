@@ -2,6 +2,8 @@ package ui
 
 import (
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestCaptureStateMsgUpdatesFields(t *testing.T) {
@@ -54,6 +56,52 @@ func TestCaptureStateMsgClearsLANUrlsWhenEmpty(t *testing.T) {
 	if out.captureStatus != "awaiting_interfaces" {
 		t.Errorf("status=%q, want awaiting_interfaces", out.captureStatus)
 	}
+}
+
+// @verified 2026-08-03: a WindowSizeMsg reporting a height at or below
+// headerHeight+footerHeight+2 (a tiny terminal, or a degenerate first resize event some
+// terminals send before the real one) used to drive viewportHeight to zero/negative,
+// leaving d.ready=true with a broken viewport. bubbles/viewport v1.0.0's GotoBottom then
+// panics with a slice-bounds-out-of-range on the very next LogMsg. Real crash reproduced via
+// `go run ./cmd/radar -dev` in a small terminal window.
+func TestTinyWindowSizeThenLogMsgDoesNotPanic(t *testing.T) {
+	d := NewDashboard("v0", 5001, true, nil, nil)
+
+	updated, _ := d.Update(tea.WindowSizeMsg{Width: 80, Height: 5})
+	out, ok := updated.(Dashboard)
+	if !ok {
+		t.Fatal("Update did not return Dashboard")
+	}
+	if !out.ready {
+		t.Fatal("expected the viewport to be marked ready after a WindowSizeMsg")
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("LogMsg after a tiny WindowSizeMsg panicked: %v", r)
+		}
+	}()
+	for range 5 {
+		updated, _ = out.Update(LogMsg{Level: "INFO", Tag: "HTTP", Message: "test log line"})
+		out = updated.(Dashboard)
+	}
+}
+
+// @verified 2026-08-03: a zero-sized WindowSizeMsg (the most degenerate case) must not panic
+// either - viewportHeight/viewportWidth are both clamped to a floor of 1.
+func TestZeroWindowSizeThenLogMsgDoesNotPanic(t *testing.T) {
+	d := NewDashboard("v0", 5001, true, nil, nil)
+
+	updated, _ := d.Update(tea.WindowSizeMsg{Width: 0, Height: 0})
+	out := updated.(Dashboard)
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("LogMsg after a zero-sized WindowSizeMsg panicked: %v", r)
+		}
+	}()
+	updated, _ = out.Update(LogMsg{Level: "INFO", Tag: "HTTP", Message: "test log line"})
+	_ = updated.(Dashboard)
 }
 
 func TestFormatCaptureLine(t *testing.T) {

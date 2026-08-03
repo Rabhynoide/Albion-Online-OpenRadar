@@ -305,13 +305,21 @@ func (d Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		d.width = msg.Width
 		d.height = msg.Height
 
-		viewportHeight := d.height - headerHeight - footerHeight - 2
+		// A terminal reporting a height at or below headerHeight+footerHeight+2 (a tiny
+		// window, or a degenerate size on the very first resize event some terminals send
+		// before the real one) drives viewportHeight to zero or negative. bubbles/viewport's
+		// GotoBottom/visibleLines assume Height > 0 and panic with a slice-bounds-out-of-range
+		// otherwise (confirmed: v1.0.0's visibleLines computes an inverted top:bottom slice
+		// when Height <= 0) - clamp to a floor of 1 so d.ready=true never leaves the viewport
+		// in that state.
+		viewportHeight := max(1, d.height-headerHeight-footerHeight-2)
+		viewportWidth := max(1, d.width-2)
 		if !d.ready {
-			d.viewport = viewport.New(d.width-2, viewportHeight)
+			d.viewport = viewport.New(viewportWidth, viewportHeight)
 			d.viewport.SetContent(d.renderLogs())
 			d.ready = true
 		} else {
-			d.viewport.Width = d.width - 2
+			d.viewport.Width = viewportWidth
 			d.viewport.Height = viewportHeight
 		}
 
