@@ -125,3 +125,39 @@ describe('ItemsDatabase.searchItems', () => {
         expect(db.searchItems({category: 'weapons'}, 2)).toHaveLength(2);
     });
 });
+
+describe('ItemsDatabase.searchItems subcategory filter', () => {
+    let db;
+
+    beforeEach(() => {
+        db = new ItemsDatabase();
+        seed(db, [
+            [1, {name: 'T4_HEAD_CLOTH_SET1', tier: 4, itempower: 700, enchant: 0, category: 'head', subcategory: 'cloth_armor'}],
+            [2, {name: 'T4_HEAD_PLATE_SET1', tier: 4, itempower: 700, enchant: 0, category: 'head', subcategory: 'plate_armor'}],
+            [3, {name: 'T5_ARMOR_CLOTH_SET1', tier: 5, itempower: 800, enchant: 0, category: 'armors', subcategory: 'cloth_armor'}],
+            [4, {name: 'T4_BAG', tier: 4, itempower: 100, enchant: 0, category: 'bags', subcategory: null}],
+        ]);
+    });
+
+    // @verified 2026-08-03 (issue: cascading market filters): mirrors the in-game marketplace's
+    // Category -> Sub-type flyout, where Sub-type narrows within an already-chosen Category.
+    test('filters by subcategory alone', () => {
+        const results = db.searchItems({subcategory: 'cloth_armor'});
+
+        expect(results.map(r => r.name)).toEqual(['T4_HEAD_CLOTH_SET1', 'T5_ARMOR_CLOTH_SET1']);
+    });
+
+    test('combines category and subcategory filters', () => {
+        const results = db.searchItems({category: 'head', subcategory: 'cloth_armor'});
+
+        expect(results.map(r => r.name)).toEqual(['T4_HEAD_CLOTH_SET1']);
+    });
+
+    test('items with no subcategory are excluded when a subcategory filter is set', () => {
+        expect(db.searchItems({subcategory: 'plate_armor'})).toHaveLength(1);
+    });
+
+    test('returns nothing when the subcategory matches no item', () => {
+        expect(db.searchItems({subcategory: 'shieldtype'})).toEqual([]);
+    });
+});

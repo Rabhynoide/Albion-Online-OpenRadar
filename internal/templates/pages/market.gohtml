@@ -23,17 +23,10 @@
 
                 <select id="marketFilterCategory" class="select select-bordered select-sm">
                     <option value="">Category</option>
-                    <option value="armors">Armor</option>
-                    <option value="bags">Bags</option>
-                    <option value="capes">Capes</option>
-                    <option value="gathering">Gathering</option>
-                    <option value="head">Head</option>
-                    <option value="mounts">Mounts</option>
-                    <option value="offhands">Off-hands</option>
-                    <option value="other">Other</option>
-                    <option value="shoes">Shoes</option>
-                    <option value="vanity">Vanity</option>
-                    <option value="weapons">Weapons</option>
+                </select>
+
+                <select id="marketFilterSubcategory" class="select select-bordered select-sm" disabled>
+                    <option value="">Sub-type</option>
                 </select>
 
                 <select id="marketFilterTier" class="select select-bordered select-sm">
@@ -103,6 +96,7 @@
     (async function () {
         const {registerPage, reinitCurrentPage} = await import('/scripts/core/PageController.js');
         const {fetchPrices} = await import('/scripts/utils/MarketClient.js');
+        const shopCategories = await import('/scripts/data/ShopCategories.js');
 
         let cleanup = [];
         let searchDebounceTimer = null;
@@ -120,6 +114,7 @@
             const searchInput = document.getElementById('marketSearchInput');
             const searchResults = document.getElementById('marketSearchResults');
             const categorySelect = document.getElementById('marketFilterCategory');
+            const subcategorySelect = document.getElementById('marketFilterSubcategory');
             const tierSelect = document.getElementById('marketFilterTier');
             const enchantSelect = document.getElementById('marketFilterEnchant');
             const qualitySelect = document.getElementById('marketFilterQuality');
@@ -129,6 +124,34 @@
             const resultsIcon = document.getElementById('marketResultsIcon');
 
             let lastFetchedEntries = [];
+
+            // Cascading Category -> Sub-type, mirroring the in-game marketplace's own flyout
+            // menu (issue: cascading market filters). Sub-type options depend on the chosen
+            // Category, so they're repopulated on every category change rather than listed
+            // statically in the template.
+            shopCategories.load().then(() => {
+                for (const {id, label} of shopCategories.getCategories()) {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = label;
+                    categorySelect.appendChild(option);
+                }
+            }).catch(error => {
+                window.logger?.warn(window.CATEGORIES?.SYSTEM, 'ShopCategoriesLoadFailed', {error: error?.message || error});
+            });
+
+            function refreshSubcategoryOptions() {
+                const category = categorySelect.value;
+                subcategorySelect.innerHTML = '<option value="">Sub-type</option>';
+                const subs = category ? shopCategories.getSubcategories(category) : [];
+                subcategorySelect.disabled = subs.length === 0;
+                for (const {id, label} of subs) {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = label;
+                    subcategorySelect.appendChild(option);
+                }
+            }
 
             function hideSearchResults() {
                 searchResults.classList.add('hidden');
@@ -152,10 +175,10 @@
                 searchResults.classList.remove('hidden');
             }
 
-            // Mirrors the in-game marketplace's own Category/Niveau/Enchantement browse
-            // controls: they work together with or without free text, so a filter change
-            // alone (no query typed) still runs a search - matching the in-game UX where you
-            // can browse a whole category without typing anything.
+            // Mirrors the in-game marketplace's own cascading Category -> Sub-type browse
+            // controls (plus Niveau/Enchantement): they work together with or without free
+            // text, so a filter change alone (no query typed) still runs a search - matching
+            // the in-game UX where you can browse a whole category without typing anything.
             function runSearch() {
                 const itemsDatabase = window.itemsDatabase;
                 if (!itemsDatabase?.isLoaded) {
@@ -164,20 +187,25 @@
                 }
                 const query = searchInput.value.trim();
                 const category = categorySelect.value;
+                const subcategory = subcategorySelect.value;
                 const tier = tierSelect.value;
                 const enchant = enchantSelect.value;
-                if (query.length < 2 && !category && !tier && !enchant) {
+                if (query.length < 2 && !category && !subcategory && !tier && !enchant) {
                     hideSearchResults();
                     return;
                 }
-                renderSearchResults(itemsDatabase.searchItems({query, category, tier, enchant}, 15));
+                renderSearchResults(itemsDatabase.searchItems({query, category, subcategory, tier, enchant}, 15));
             }
 
             addListener(searchInput, 'input', () => {
                 clearTimeout(searchDebounceTimer);
                 searchDebounceTimer = setTimeout(runSearch, 200);
             });
-            addListener(categorySelect, 'change', runSearch);
+            addListener(categorySelect, 'change', () => {
+                refreshSubcategoryOptions();
+                runSearch();
+            });
+            addListener(subcategorySelect, 'change', runSearch);
             addListener(tierSelect, 'change', runSearch);
             addListener(enchantSelect, 'change', runSearch);
 

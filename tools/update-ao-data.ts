@@ -37,6 +37,7 @@ interface MinifiedItem {
     p: number;
     t?: string;
     cat?: string;
+    sub?: string;
     slot?: string;
     h2?: boolean;
 }
@@ -115,6 +116,7 @@ function minifyItems(rawData: any): MinifiedItem[] {
             if (itempower > 0) {
                 const minItem: MinifiedItem = {n: uniqueName, p: itempower, t: itemType};
                 if (item['@shopcategory']) minItem.cat = item['@shopcategory'];
+                if (item['@shopsubcategory1']) minItem.sub = item['@shopsubcategory1'];
                 if (item['@slottype']) minItem.slot = item['@slottype'];
                 if (item['@twohanded'] === 'true') minItem.h2 = true;
                 items.push(minItem);

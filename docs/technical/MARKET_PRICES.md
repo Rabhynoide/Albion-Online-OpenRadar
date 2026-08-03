@@ -10,7 +10,8 @@ How OpenRadar's Market page looks up item prices, and how the radar contributes 
 |---|---|---|
 | Item search | `web/ao-bin-dumps/items.min.json` (UniqueName only, no localized display name) | `web/scripts/data/ItemsDatabase.js` (`searchByName`) |
 | Price lookup | Public [Albion Online Data Project](https://www.albion-online-data.com/) API, cached by the Hub | `web/scripts/utils/MarketClient.js` -> `internal/server/market_api.go` -> (Hub, if configured) `internal/hub/market_api.go` -> `internal/adp` |
-| UI | Search box + per-city price table | `internal/templates/pages/market.gohtml` |
+| UI | Search box + cascading Category/Sub-type filter + Tier/Enchantment/Quality + per-city price table | `internal/templates/pages/market.gohtml` |
+| Category/Sub-type taxonomy | `web/ao-bin-dumps/shopcategories.json`, generated from `ao-bin-dumps`'s `items.json` shopcategories tree + `localization.json` tuids | `tools/generate-shop-categories.ts` -> `web/scripts/data/ShopCategories.js` |
 | Live in-game contribution | Photon `AuctionGetOffers`/`AuctionGetRequests` responses (opcodes 81/82), observed passively while the player browses the marketplace | `web/scripts/data/MarketHandler.js` -> `POST /api/market/observations` -> (Hub, if configured) `POST /api/market/prices` |
 
 ## Architecture: Hub-first, direct-fallback
@@ -77,6 +78,40 @@ user-facing name to the real host). Each side picks its own region independently
 
 There's no cross-region merging - a Hub configured for `europe` will never see `americas`
 prices, matching how the game's own markets are already fully region-isolated.
+
+## Category/Sub-type filter taxonomy
+
+The in-game marketplace's Category dropdown is actually a 3-level cascading flyout (Category ->
+armor-weight-class-style Sub-type -> individual item set names). Rather than hand-curating a
+mapping, the real taxonomy comes straight from Albion's own data:
+
+- **Source**: `ao-data/ao-bin-dumps`'s raw (non-"formatted") `items.json` carries an
+  `items.shopcategories.shopcategory[]` tree - each category has an `@id` and a nested
+  `shopsubcategory[]` list, and separately every individual item has its own
+  `@shopcategory`/`@shopsubcategory1`/`@shopsubcategory2` attributes pointing at those same
+  `@id` values. `localization.json` (~91 MB, fetched on demand - not part of the regular
+  `update-ao-data` pipeline) has the matching human-readable labels under
+  `@MARKETPLACEGUI_ROLLOUT_SHOPCATEGORY_<ID>`/`@MARKETPLACEGUI_ROLLOUT_SHOPSUBCATEGORY_<ID>`
+  tuids (uppercased `@id`), each with an `EN-US` `seg` value.
+- **`tools/generate-shop-categories.ts`** (run by hand, `npx tsx tools/generate-shop-categories.ts` -
+  not wired into `make assets`/`update-ao-data` since this taxonomy only changes on rare game
+  patches, unlike item stats): downloads both files, structurally scans `localization.json` for
+  each tuid's `EN-US` block (not a full `JSON.parse` of the 91 MB file), and writes
+  `web/ao-bin-dumps/shopcategories.json` as `{ [categoryId]: {label, subcategories: {[subId]: label}} }`.
+  Confirmed 2026-08-03: 16 categories, 0 missing labels - e.g. `armors.label = "Chest Armor"`,
+  `armors.subcategories.cloth_armor = "Cloth Robes"`, matching the in-game French UI's "Armure de
+  Poitrine" -> "Robes en Tissu" exactly.
+- **`tools/update-ao-data.ts`**'s `minifyItems()` now also carries each item's own
+  `@shopsubcategory1` through into `items.min.json` as `sub` (alongside the pre-existing `cat`),
+  so `web/scripts/data/ItemsDatabase.js` can filter by it without a second lookup.
+- **Serving**: `shopcategories.json` (4.9 KB) is small enough to stay under
+  `compress-game-data.ts`'s 10 KB gzip threshold, so it ships as a plain file - `internal/server/http.go`'s
+  generic `/ao-bin-dumps/` handler already gzip-compresses on the fly for any client that accepts it.
+- **`web/scripts/data/ShopCategories.js`**: fetches and caches `shopcategories.json` once per
+  page session; `market.gohtml` populates the Category `<select>` from `getCategories()` on page
+  init, and repopulates a second Sub-type `<select>` from `getSubcategories(categoryId)` on every
+  Category change - the cascading behavior itself lives entirely in the template's script block,
+  not in `ShopCategories.js`.
 
 ## Hub schema (`internal/hub/market_store.go`)
 

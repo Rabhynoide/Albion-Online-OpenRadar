@@ -1,0 +1,196 @@
+{
+  "weapons": {
+    "label": "Weapons",
+    "subcategories": {
+      "bow": "Bow",
+      "crossbow": "Crossbow",
+      "axe": "Axe",
+      "dagger": "Dagger",
+      "hammer": "Hammer",
+      "knuckles": "War Gloves",
+      "mace": "Mace",
+      "quarterstaff": "Quarterstaff",
+      "spear": "Spear",
+      "sword": "Sword",
+      "arcanestaff": "Arcane Staff",
+      "cursestaff": "Cursed Staff",
+      "firestaff": "Fire Staff",
+      "froststaff": "Frost Staff",
+      "holystaff": "Holy Staff",
+      "naturestaff": "Nature Staff",
+      "shapeshifterstaff": "Shapeshifter Staff",
+      "other": "Other"
+    }
+  },
+  "armors": {
+    "label": "Chest Armor",
+    "subcategories": {
+      "cloth_armor": "Cloth Robes",
+      "leather_armor": "Leather Jackets",
+      "plate_armor": "Plate Armor",
+      "other": "Other"
+    }
+  },
+  "head": {
+    "label": "Head Armor",
+    "subcategories": {
+      "cloth_helmet": "Cloth Cowl",
+      "leather_helmet": "Leather Hood",
+      "plate_helmet": "Plate Helmet",
+      "other": "Other"
+    }
+  },
+  "shoes": {
+    "label": "Foot Armor",
+    "subcategories": {
+      "cloth_shoes": "Cloth Sandals",
+      "leather_shoes": "Leather Shoes",
+      "plate_shoes": "Plate Boots",
+      "other": "Other"
+    }
+  },
+  "offhands": {
+    "label": "Off-Hands",
+    "subcategories": {
+      "booktype": "Mage",
+      "torchtype": "Hunter",
+      "shieldtype": "Warrior",
+      "other": "Other"
+    }
+  },
+  "capes": {
+    "label": "Capes",
+    "subcategories": {
+      "accessoires_capes_capes": "Cape",
+      "accessoires_capes_bridgewatch": "Bridgewatch",
+      "accessoires_capes_fortsterling": "Fort Sterling",
+      "accessoires_capes_lymhurst": "Lymhurst",
+      "accessoires_capes_martlock": "Martlock",
+      "accessoires_capes_thetford": "Thetford",
+      "accessoires_capes_caerleon": "Caerleon",
+      "accessoires_capes_brecilien": "Brecilien",
+      "accessoires_capes_heretic": "Heretic",
+      "accessoires_capes_undead": "Undead",
+      "accessoires_capes_keeper": "Keeper",
+      "accessoires_capes_morgana": "Morgana",
+      "accessoires_capes_avalon": "Avalonian",
+      "accessoires_capes_demon": "Demon",
+      "accessoires_capes_smuggler": "Smuggler",
+      "other": "Other"
+    }
+  },
+  "bags": {
+    "label": "Bags",
+    "subcategories": {
+      "bags": "Bags",
+      "satchels": "Satchels of Insight",
+      "other": "Other"
+    }
+  },
+  "mounts": {
+    "label": "Mount",
+    "subcategories": {
+      "basemounts": "Base Mounts",
+      "raremounts": "Rare Mounts",
+      "battle_mount": "Battle Mount"
+    }
+  },
+  "consumables": {
+    "label": "Consumable",
+    "subcategories": {
+      "food": "Food",
+      "potions": "Potions",
+      "tomes": "Tomes",
+      "other": "Other",
+      "silverbag": "Silverbag"
+    }
+  },
+  "gathering": {
+    "label": "Gathering Equipment",
+    "subcategories": {
+      "fish": "Fish",
+      "fiber": "Fiber",
+      "hide": "Hide",
+      "ore": "Ore",
+      "rock": "Stone",
+      "wood": "Wood",
+      "tracking": "Tracking"
+    }
+  },
+  "crafting": {
+    "label": "Crafting",
+    "subcategories": {
+      "resources": "Resources",
+      "refinedresources": "Refined Resources",
+      "tokens": "Tokens",
+      "cityresources": "City Resources",
+      "fish": "Fish",
+      "alchemy": "Alchemy"
+    }
+  },
+  "artefacts": {
+    "label": "Artifact",
+    "subcategories": {
+      "weapons": "Weapons",
+      "armors": "Chest Armor",
+      "head": "Head Armor",
+      "shoes": "Shoes",
+      "offhands": "Off-Hands",
+      "fragments": "Artifact Fragments",
+      "capes": "Capes",
+      "favor": "Crystallized Artifacts"
+    }
+  },
+  "farming": {
+    "label": "Farming",
+    "subcategories": {
+      "farm": "Farm",
+      "herbgarden": "Herb Garden",
+      "pasture": "Pasture",
+      "kennel": "Kennel",
+      "farmingproducts": "Farming Products"
+    }
+  },
+  "furniture": {
+    "label": "Furniture",
+    "subcategories": {
+      "repairkit": "Repair Kit",
+      "chest": "Chest",
+      "house": "House",
+      "island": "Island",
+      "world": "World",
+      "other": "Other"
+    }
+  },
+  "vanity": {
+    "label": "Vanity",
+    "subcategories": {
+      "avatar": "Avatars",
+      "avatarring": "Avatar Rings",
+      "mounts": "Mounts",
+      "weapons": "Weapons",
+      "armors": "Chest Armor",
+      "head": "Head Armor",
+      "shoes": "Shoes",
+      "offhands": "Off-Hands",
+      "capes": "Capes",
+      "killemotes": "Kill Emotes"
+    }
+  },
+  "other": {
+    "label": "Other",
+    "subcategories": {
+      "lootitem": "Loot items",
+      "guilds": "Guilds",
+      "labourers": "Laborers",
+      "tokens": "Tokens",
+      "luxurygoods": "Luxury Goods",
+      "maps": "Map",
+      "hardcoreexpeditions": "Hardcore Expeditions",
+      "questitems": "Quest Items",
+      "killtrophy": "Kill Trophy",
+      "trash": "Trash",
+      "other": "Other"
+    }
+  }
+}
