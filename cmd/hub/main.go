@@ -1,5 +1,6 @@
 // Command hub runs the OpenRadar Hub: a small self-hostable service that lets a group
-// of radar clients pool discovered Avalonian Road edges into one shared database.
+// of radar clients pool discovered Avalonian Road edges and market prices into one
+// shared database.
 package main
 
 import (
@@ -12,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nospy/albion-openradar/internal/adp"
 	"github.com/nospy/albion-openradar/internal/hub"
 )
 
@@ -31,6 +33,7 @@ func run() int {
 		fmt.Println("HUB_SECRET is required (refusing to start unauthenticated)")
 		return 1
 	}
+	region := adp.Region(envOr("AODP_REGION", string(adp.RegionEurope)))
 
 	store, err := hub.OpenStore(dbPath)
 	if err != nil {
@@ -40,8 +43,10 @@ func run() int {
 	defer store.Close()
 
 	api := hub.NewAPI(store, secret)
+	marketAPI := hub.NewMarketAPI(store, secret, adp.NewClient(region))
 	mux := http.NewServeMux()
 	api.Register(mux)
+	marketAPI.Register(mux)
 
 	server := &http.Server{
 		Addr:              ":" + port,
@@ -62,7 +67,7 @@ func run() int {
 		}
 	}()
 
-	fmt.Printf("OpenRadar Hub listening on :%s (db: %s)\n", port, dbPath)
+	fmt.Printf("OpenRadar Hub listening on :%s (db: %s, market region: %s)\n", port, dbPath, region)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Printf("Server error: %v\n", err)
 		return 1

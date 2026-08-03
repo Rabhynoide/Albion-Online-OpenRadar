@@ -1,6 +1,6 @@
 // Package hub implements the OpenRadar Hub: a small self-hostable service that lets a
-// group of radar clients pool discovered Avalonian Road edges into one shared database,
-// instead of each player only ever seeing their own local discoveries.
+// group of radar clients pool discovered Avalonian Road edges and market prices into one
+// shared database, instead of each player only ever seeing their own local discoveries.
 package hub
 
 import (
@@ -39,6 +39,26 @@ func OpenStore(path string) (*Store, error) {
 	`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("create schema: %w", err)
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS market_prices (
+			item_id TEXT NOT NULL,
+			city TEXT NOT NULL,
+			quality INTEGER NOT NULL,
+			sell_price_min INTEGER,
+			sell_price_min_date TEXT,
+			sell_price_max INTEGER,
+			sell_price_max_date TEXT,
+			buy_price_min INTEGER,
+			buy_price_min_date TEXT,
+			buy_price_max INTEGER,
+			buy_price_max_date TEXT,
+			cached_at TIMESTAMP NOT NULL,
+			PRIMARY KEY (item_id, city, quality)
+		)
+	`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("create market schema: %w", err)
 	}
 	return &Store{db: db}, nil
 }

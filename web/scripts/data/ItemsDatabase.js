@@ -75,6 +75,26 @@ export class ItemsDatabase {
     }
 
     /**
+     * Case-insensitive substring search over item UniqueNames (there is no localized
+     * display-name link in this data - "SWORD" matches "T4_MAIN_SWORD", "T5_2H_SWORD", etc).
+     * @param {string} query
+     * @param {number} [limit=20]
+     * @returns {Array<{id: number, name: string, tier: number, itempower: number, enchant: number}>}
+     */
+    searchByName(query, limit = 20) {
+        if (!query) return [];
+        const needle = query.toLowerCase();
+        const results = [];
+        for (const [id, item] of this.items) {
+            if (item.name.toLowerCase().includes(needle)) {
+                results.push({id, ...item});
+                if (results.length >= limit) break;
+            }
+        }
+        return results;
+    }
+
+    /**
      * Extract tier from item uniquename (e.g., "T4_2H_SWORD" → 4)
      * @param {string} uniqueName
      * @returns {number}

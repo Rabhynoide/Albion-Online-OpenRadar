@@ -364,6 +364,28 @@
         </div>
     </div>
 
+    <!-- Market Settings -->
+    <div class="collapse collapse-arrow bg-base-200 rounded-xl">
+        <input type="checkbox" id="collapse-market"/>
+        <div class="collapse-title text-xl font-semibold flex items-center gap-2">
+            <i data-lucide="coins" class="w-5 h-5 text-warning"></i>
+            Market
+        </div>
+        <div class="collapse-content">
+            <p class="text-xs text-base-content/60 mt-1 pb-2">Region used to fetch item prices from the public Albion Online Data Project API when no Hub is configured or reachable (the Hub, if enabled above, picks its own region independently).</p>
+            <div class="pt-2">
+                <label class="flex flex-col gap-1 max-w-xs">
+                    <span class="text-base-content/60 text-xs">Data Region</span>
+                    <select id="settingMarketRegion" class="select select-bordered select-sm w-full">
+                        <option value="europe">Europe</option>
+                        <option value="americas">Americas</option>
+                        <option value="asia">Asia</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+    </div>
+
     <!-- Danger Zone -->
     <div class="card bg-error/5 border border-error/20">
         <div class="card-body">
@@ -427,6 +449,12 @@
             if (collapseHub) {
                 collapseHub.checked = settingsSync.getBool('collapse-settings-hub', false);
                 addListener(collapseHub, 'change', () => settingsSync.setBool('collapse-settings-hub', collapseHub.checked));
+            }
+
+            const collapseMarket = document.getElementById('collapse-market');
+            if (collapseMarket) {
+                collapseMarket.checked = settingsSync.getBool('collapse-settings-market', false);
+                addListener(collapseMarket, 'change', () => settingsSync.setBool('collapse-settings-market', collapseMarket.checked));
             }
 
             // Log level dropdown
@@ -537,6 +565,29 @@
                 }
                 if (window.toast) {
                     ok ? window.toast.success('Hub settings saved') : window.toast.error('Failed to save Hub settings');
+                }
+            });
+
+            // Market settings: which Data Project regional API to query when no Hub is
+            // configured/reachable. Backend-only (network.json), never localStorage.
+            const marketRegionEl = document.getElementById('settingMarketRegion');
+            const marketSettings = await fetchBackendSettings('/api/settings/market');
+            if (marketSettings && marketRegionEl) {
+                marketRegionEl.value = marketSettings.region || 'europe';
+            }
+            addListener(marketRegionEl, 'change', async (e) => {
+                try {
+                    const resp = await fetch('/api/settings/market', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({region: e.target.value})
+                    });
+                    if (window.toast) {
+                        resp.ok ? window.toast.success('Market region saved') : window.toast.error('Failed to save market region');
+                    }
+                } catch (err) {
+                    console.warn('[Settings] POST /api/settings/market failed:', err);
+                    if (window.toast) window.toast.error('Failed to save market region');
                 }
             });
 

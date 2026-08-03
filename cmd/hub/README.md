@@ -1,9 +1,9 @@
 # OpenRadar Hub
 
 The **OpenRadar Hub** is a small self-hostable service that lets a group of radar clients
-pool discovered Avalonian Road edges into one shared, SQLite-backed database instead of each
-player only ever seeing their own local discoveries. One Hub instance per friend group; each
-radar client points at whichever Hub it wants (or none) via Settings.
+pool discovered Avalonian Road edges and market prices into one shared, SQLite-backed database
+instead of each player only ever seeing their own local discoveries. One Hub instance per
+friend group; each radar client points at whichever Hub it wants (or none) via Settings.
 
 ## Why
 
@@ -19,11 +19,18 @@ for the full design.
 ## Code layout
 
 - `cmd/hub/main.go` — entry point. Reads `PORT` (default `8090`), `DB_PATH` (default
-  `/data/hub.db`), and requires `HUB_SECRET` (refuses to start without one).
+  `/data/hub.db`), `AODP_REGION` (default `europe`; also `americas`/`asia` - which of the
+  public Albion Online Data Project's regional hosts the Hub falls back to when its own
+  market-price cache is empty/stale), and requires `HUB_SECRET` (refuses to start without one).
 - `internal/hub/store.go` — SQLite-backed edge store (`modernc.org/sqlite`, pure Go, no CGO).
+- `internal/hub/market_store.go` — same database, `market_prices` table (see
+  [`docs/technical/MARKET_PRICES.md`](../../docs/technical/MARKET_PRICES.md)).
 - `internal/hub/auth.go` — shared-secret header check (`X-Hub-Secret`).
 - `internal/hub/api.go` — `GET/POST /api/roads/edges` (secret required) and `GET /health`
   (unauthenticated, for container healthchecks).
+- `internal/hub/market_api.go` — `GET/POST /api/market/prices` (secret required); `GET` serves
+  from cache, falling back to the public Data Project API (`internal/adp`) for anything missing
+  or stale, and caching the result.
 
 Both live in the **same Go module** as `cmd/radar` (`github.com/nospy/albion-openradar`) — no
 separate `go.mod`/workspace.
@@ -115,10 +122,17 @@ over plain HTTP on a trusted LAN/VPN (no reverse proxy at all) is a reasonable c
 Hub never needs to be internet-reachable.
 
 Then, on each radar client, go to **Settings → Hub (Shared Roads)**, enable it, and set the
-Hub URL and the same shared secret.
+Hub URL and the same shared secret. The Market page works even without a Hub configured (it
+falls back to querying the public Data Project API directly - see **Settings → Market** for
+the region selector), but a configured Hub gives every client in the group a shared, cached
+copy instead of each one hitting the public API independently.
 
 ## Explicitly out of scope (v1)
 
 - Per-user accounts/attribution - one shared secret per group, not individual logins.
-- A market-price database (mentioned as a possible later, separate effort - not started).
+- Live in-game contribution to the market-price cache (detecting marketplace browsing over
+  Photon and POSTing observed prices) - the Hub's ingestion endpoint exists
+  (`POST /api/market/prices`) and is ready for this, but no radar-client capture/decode work
+  has been done yet. See [`docs/technical/MARKET_PRICES.md`](../../docs/technical/MARKET_PRICES.md)'s
+  "Not implemented yet" section.
 - Conflict resolution smarter than last-write-wins upsert.

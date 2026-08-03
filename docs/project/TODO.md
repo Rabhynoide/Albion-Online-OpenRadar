@@ -17,6 +17,7 @@
 | Fishing | working | issue #25 closed via #73 + #85. Event 61 (end-of-fishing) logged but not visualized. |
 | GPS / Avalon Roads | working | static open-world graph from `cluster/world.json`, road discovery by play, 24h staleness confirmed from game data, manual "Remove this route" for roads that reset early (#5) - see `docs/technical/AVALON_ROADS_GPS.md`. Per-instance road duration still unobservable. Optional shared roads database via self-hosted `cmd/hub` (Docker, SQLite, shared-secret auth) - radar backend relays/falls back automatically, see `cmd/hub/README.md`. |
 | Local Treasures | working | buried chests, temporary resources, smuggler piles, timed events via `LocalTreasuresUpdate` (event 285, #4); `SPECIAL_EVENT_*` excluded as mob-detection duplicates. Single shared icon in v1, no per-type icons or countdown yet. |
+| Market Prices | working | item search + per-city price table, backed by the public Albion Online Data Project API, cached/shared via the Hub when configured - see `docs/technical/MARKET_PRICES.md`. Live in-game contribution to the Hub (detecting marketplace browsing over Photon) not started - needs a pcap capture. |
 
 ## v2.3 backlog
 
@@ -27,6 +28,7 @@
 - [ ] **Fishing**: end-of-fishing state, fishing zones on the radar.
 - [ ] **Mists routing**: cases for events 518 (NewMistsImmediateReturnExit), 519 (MistsPlayerJoinedInfo), 520 (NewMistsStaticEntrance), 529 (MistsEntranceDataChanged) reach the frontend but no handler consumes them.
 - [ ] **Brecilien ecosystem (#117)**: Mist Of Brecilien wrongly classified Safe (PR #103 inheritance hole when origin is `safe`), Roads of Avalon one-way exit drops player events. Consolidates #112, #108, #102. Blocked on 50K Brecilien Standing for pcap captures.
+- [ ] **Market prices - live in-game contribution**: have the radar client submit observed prices to the Hub whenever the player browses the in-game marketplace, instead of the Hub only ever mirroring the public Albion Online Data Project API. `AuctionGetOffers`/`AuctionGetRequests` (opcodes 81/82) have never been captured or decoded - no parameter layout exists. Blocked on a pcap capture of the in-game marketplace UI. The Hub's ingestion endpoint (`POST /api/market/prices`) already exists and needs no changes once this lands - see `docs/technical/MARKET_PRICES.md`.
 
 ### Maps
 
@@ -107,6 +109,13 @@
   46's enchant correction (batch Event 38 spawns start at enchant=0), gated behind a new
   `settingResourceSound` toggle on the Resources page. A per-instance `alerted` flag stops it
   from re-firing on every later size update once a spawn has already matched once.
+- **MARKET-1** (Market Prices, Part A): new Market page (item search + per-city sell/buy price
+  table), backed by the public Albion Online Data Project API by default and cached/shared via
+  the existing self-hosted Hub when configured - new `internal/adp` client package, new
+  `market_prices` table + `GET/POST /api/market/prices` on the Hub (`internal/hub`), a matching
+  Hub-first/direct-fallback proxy on the radar client (`internal/server/market_api.go`), and a
+  `Market.Region` setting. See `docs/technical/MARKET_PRICES.md`. Part B (live in-game
+  contribution to the Hub) stays open above, blocked on a pcap capture.
 
 ## Closed in v2.2
 

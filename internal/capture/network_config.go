@@ -31,10 +31,18 @@ type HubConfig struct {
 	Secret  string `json:"secret"`
 }
 
+// MarketConfig selects which of the Albion Online Data Project's regional API hosts to use
+// as the market-price fallback source when no Hub is configured/reachable (the Hub, if used,
+// picks its own region independently via its AODP_REGION env var). See internal/adp.
+type MarketConfig struct {
+	Region string `json:"region"` // "europe" (default), "americas", or "asia"
+}
+
 type Config struct {
 	CaptureInterfaces []PersistedInterface `json:"captureInterfaces"`
 	Logging           LoggingConfig        `json:"logging"`
 	Hub               HubConfig            `json:"hub"`
+	Market            MarketConfig         `json:"market"`
 }
 
 func ReadConfig(appDir string) (Config, error) {

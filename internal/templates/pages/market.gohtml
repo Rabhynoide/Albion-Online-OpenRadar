@@ -1,0 +1,174 @@
+{{define "pages/market"}}
+<div class="space-y-6 stagger">
+    <!-- Page Header -->
+    <div class="card bg-base-200">
+        <div class="card-body">
+            <h1 class="text-3xl font-bold text-base-content">Market</h1>
+            <p class="text-base-content/60 mt-2">Look up item prices across cities - backed by your Hub (if configured) and the public Albion Online Data Project otherwise.</p>
+        </div>
+    </div>
+
+    <!-- Search -->
+    <div class="card bg-base-200">
+        <div class="card-body">
+            <div class="relative max-w-md">
+                <label class="flex items-center gap-2 input input-bordered input-sm w-full">
+                    <i data-lucide="search" class="w-4 h-4 text-base-content/50"></i>
+                    <input id="marketSearchInput" type="text" placeholder="Search an item (e.g. T4_BAG, sword...)"
+                           class="grow" autocomplete="off">
+                </label>
+                <ul id="marketSearchResults" class="menu bg-base-300 rounded-box mt-1 absolute w-full z-10 shadow-lg hidden max-h-72 overflow-y-auto flex-nowrap"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results -->
+    <div id="marketResults" class="card bg-base-200 hidden">
+        <div class="card-body">
+            <h2 class="text-xl font-semibold text-base-content mb-4 flex items-center gap-2">
+                <img id="marketResultsIcon" class="w-8 h-8" alt="" onerror="this.style.visibility='hidden'">
+                <span id="marketResultsName"></span>
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="table table-sm">
+                    <thead>
+                    <tr>
+                        <th>City</th>
+                        <th>Quality</th>
+                        <th>Sell Min</th>
+                        <th>Sell Max</th>
+                        <th>Buy Min</th>
+                        <th>Buy Max</th>
+                        <th>Updated</th>
+                    </tr>
+                    </thead>
+                    <tbody id="marketResultsBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts/market"}}
+<script>
+    (async function () {
+        const {registerPage, reinitCurrentPage} = await import('/scripts/core/PageController.js');
+        const {fetchPrices} = await import('/scripts/utils/MarketClient.js');
+
+        let cleanup = [];
+        let searchDebounceTimer = null;
+
+        function initMarketPage() {
+            cleanup = [];
+
+            function addListener(target, event, handler) {
+                if (target) {
+                    target.addEventListener(event, handler);
+                    cleanup.push(() => target.removeEventListener(event, handler));
+                }
+            }
+
+            const searchInput = document.getElementById('marketSearchInput');
+            const searchResults = document.getElementById('marketSearchResults');
+            const resultsCard = document.getElementById('marketResults');
+            const resultsBody = document.getElementById('marketResultsBody');
+            const resultsName = document.getElementById('marketResultsName');
+            const resultsIcon = document.getElementById('marketResultsIcon');
+
+            function hideSearchResults() {
+                searchResults.classList.add('hidden');
+                searchResults.innerHTML = '';
+            }
+
+            function renderSearchResults(matches) {
+                searchResults.innerHTML = '';
+                if (matches.length === 0) {
+                    hideSearchResults();
+                    return;
+                }
+                matches.forEach(item => {
+                    const li = document.createElement('li');
+                    const a = document.createElement('a');
+                    a.textContent = item.name;
+                    addListener(a, 'click', () => selectItem(item.name));
+                    li.appendChild(a);
+                    searchResults.appendChild(li);
+                });
+                searchResults.classList.remove('hidden');
+            }
+
+            addListener(searchInput, 'input', () => {
+                clearTimeout(searchDebounceTimer);
+                const query = searchInput.value.trim();
+                const itemsDatabase = window.itemsDatabase;
+                if (query.length < 2 || !itemsDatabase?.isLoaded) {
+                    hideSearchResults();
+                    return;
+                }
+                searchDebounceTimer = setTimeout(() => {
+                    renderSearchResults(itemsDatabase.searchByName(query, 15));
+                }, 200);
+            });
+
+            addListener(document, 'click', (e) => {
+                if (!e.target.closest('#marketSearchInput') && !e.target.closest('#marketSearchResults')) {
+                    hideSearchResults();
+                }
+            });
+
+            function renderPriceRows(entries) {
+                resultsBody.innerHTML = '';
+                const withData = (entries || []).filter(e => e.sell_price_min > 0 || e.buy_price_max > 0);
+                if (withData.length === 0) {
+                    resultsBody.innerHTML = '<tr><td colspan="7" class="text-center text-base-content/50">No price data available.</td></tr>';
+                    return;
+                }
+                withData.forEach(e => {
+                    const tr = document.createElement('tr');
+                    const cells = [
+                        e.city, e.quality,
+                        e.sell_price_min.toLocaleString(), e.sell_price_max.toLocaleString(),
+                        e.buy_price_min.toLocaleString(), e.buy_price_max.toLocaleString(),
+                    ];
+                    cells.forEach(text => {
+                        const td = document.createElement('td');
+                        td.textContent = text;
+                        tr.appendChild(td);
+                    });
+                    const updatedTd = document.createElement('td');
+                    updatedTd.className = 'text-xs text-base-content/50';
+                    updatedTd.textContent = e.sell_price_min_date;
+                    tr.appendChild(updatedTd);
+                    resultsBody.appendChild(tr);
+                });
+            }
+
+            async function selectItem(uniqueName) {
+                hideSearchResults();
+                searchInput.value = uniqueName;
+                resultsName.textContent = uniqueName;
+                resultsIcon.style.visibility = 'visible';
+                resultsIcon.src = `/images/Items/${uniqueName}.webp`;
+                resultsCard.classList.remove('hidden');
+                resultsBody.innerHTML = '<tr><td colspan="7" class="text-center text-base-content/50">Loading...</td></tr>';
+
+                const entries = await fetchPrices([uniqueName]);
+                renderPriceRows(entries);
+            }
+        }
+
+        function destroyMarketPage() {
+            cleanup.forEach(fn => fn());
+            cleanup = [];
+        }
+
+        if (!window._marketPageRegistered) {
+            registerPage('market', {init: initMarketPage, destroy: destroyMarketPage});
+            window._marketPageRegistered = true;
+        }
+
+        window.onGlobalsReady(() => reinitCurrentPage());
+    })();
+</script>
+{{end}}

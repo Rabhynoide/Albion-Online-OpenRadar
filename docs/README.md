@@ -21,6 +21,7 @@ Index of the documentation that ships with the repo.
 | [HARVEST_EVENTS.md](./technical/HARVEST_EVENTS.md) | event 40/46/61 logic, living vs static, tier resolution |
 | [MISTS_DETECTION.md](./technical/MISTS_DETECTION.md) | portal, feu follet, wisp cage detection |
 | [AVALON_ROADS_GPS.md](./technical/AVALON_ROADS_GPS.md) | GPS zone graph, road discovery, staleness, Local Treasures, shared roads Hub |
+| [MARKET_PRICES.md](./technical/MARKET_PRICES.md) | item price lookup, Hub-first/direct-fallback, Albion Data Project API shape |
 | [CAPTURE_INTERFACES.md](./technical/CAPTURE_INTERFACES.md) | multi-interface manager, network.json schema, ExitLag behavior |
 | [LOGGING.md](./technical/LOGGING.md) | log routing, file naming, pcap recording |
 | [DEATHEYE_ANALYSIS.md](./technical/DEATHEYE_ANALYSIS.md) | architecture comparison with the DEATHEYE project, lessons kept |
