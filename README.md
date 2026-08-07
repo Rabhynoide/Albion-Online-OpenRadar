@@ -183,6 +183,12 @@ Fonts, icons, everything bundled. Once Albion connects, the radar works without 
 Check [TODO.md](docs/project/TODO.md) for what's coming:
 
 - v2.3: Dungeons database, Chests rarity, Fishing completion, Mists cluster routing
+- **In progress**: a fully native, browser-free client - a click-through map overlay
+  (`cmd/radar -overlay`) plus a native settings window (`cmd/radar-settings`) covering
+  Players/Resources/Enemies/Chests/Ignore List/Settings. Not released yet; the web app above
+  stays the primary way to run OpenRadar until it is. See
+  [NATIVE_OVERLAY_CLIENT.md](docs/technical/NATIVE_OVERLAY_CLIENT.md) and
+  [NATIVE_SETTINGS_CLIENT.md](docs/technical/NATIVE_SETTINGS_CLIENT.md).
 - Future: squad mode, session heatmaps
 
 ---
@@ -335,6 +341,8 @@ make release-dry-run  # Same plus a generated RELEASE.md for review
 | [RELEASE_2.1.0.md](docs/releases/RELEASE_2.1.0.md) | Memory and performance, Picture-in-Picture |
 | [RELEASE_2.0.0.md](docs/releases/RELEASE_2.0.0.md) | Go backend, UI overhaul |
 | [TODO.md](docs/project/TODO.md) | Roadmap and open observations |
+| [NATIVE_OVERLAY_CLIENT.md](docs/technical/NATIVE_OVERLAY_CLIENT.md) | Native click-through map overlay (in progress) |
+| [NATIVE_SETTINGS_CLIENT.md](docs/technical/NATIVE_SETTINGS_CLIENT.md) | Native settings window (in progress) |
 | [docs/](docs/) | Full documentation index |
 
 ---

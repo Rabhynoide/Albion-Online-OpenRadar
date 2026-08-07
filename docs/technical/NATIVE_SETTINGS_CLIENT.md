@@ -4,7 +4,7 @@ A native, browser-free configuration app (`cmd/radar-settings`, Fyne) covering e
 app's Players/Resources/Enemies/Chests/Ignore List/Settings pages did, plus a button to launch the
 native map overlay (`docs/technical/NATIVE_OVERLAY_CLIENT.md`) alongside it.
 
-*Last verified against code: 2026-08-07.*
+*Last verified against code: 2026-08-08.*
 
 ## What this is (and isn't)
 
@@ -132,21 +132,142 @@ One file per page, same pattern as `internal/overlay`'s one-file-per-concern lay
 - **`run.go`** - `Deps` (what `cmd/radar-settings/main.go` hands over - mirrors
   `cmd/radar/overlay_setup.go`'s `buildOverlayState` pattern) and `Run`, the blocking entry point.
 
-## Fix found during manual testing: Resources page filter never applied in the overlay
+## Draw-time filter audit: a whole class of settings silently did nothing in the overlay
 
-`internal/radarstate/harvestables.go`'s `getEnchantGrid` was wired for exactly one thing:
-`maybeAlertResource`'s sound-alert gate, correctly mirroring `HarvestablesHandler.js` (which only
-ever gated the sound alert too). What got missed: the web app's **visual** filter is a *separate*
-gate, in `HarvestablesDrawing.js`, via `LivingResourceFilter.js`'s `shouldRenderStaticResource`/
-`shouldRenderLivingResource` - a different file from the handler entirely. `internal/overlay`'s
-`Draw()` never ported that second gate, so it rendered every tracked harvestable unconditionally,
-regardless of what was checked on the Resources page. Fixed with a new
-`HarvestablesState.ShouldRender(h Harvestable) bool`, reusing the same injected `getEnchantGrid`
-function and living/static key-map split `maybeAlertResource` already had, called from
-`internal/overlay/game.go`'s `Draw()` before drawing each harvestable. Nothing renders for a
-tier/enchant cell nobody has checked - matching the Resources page's own all-unchecked-by-default
-grid (a fresh install shows *zero* resources until the user opts in, same as the web app always
-did).
+Manually testing the overlay end-to-end (not just unit tests) turned up a long list of settings
+that had been visibly checkable on the web pages this whole time but had **zero effect** on what
+the overlay actually drew. Almost all of them share one root cause, first found in Resources and
+then confirmed repeatedly across every other entity type: the web app applies these filters in
+the *drawing* layer (`web/scripts/drawings/*.js`), a separate file from the *handler* layer
+(`web/scripts/handlers/*.js`) that `internal/radarstate` was ported from - so a filter that lives
+only in `FooDrawing.js` had nothing on the Go side pulling it in, even though the corresponding
+`FooHandler.js` port was otherwise faithful.
+
+- **Resources** (`internal/radarstate/harvestables.go`): `getEnchantGrid` was wired for exactly
+  one thing, `maybeAlertResource`'s sound-alert gate (correctly mirroring `HarvestablesHandler.js`,
+  which only ever gated the sound alert too). The web app's *visual* filter is a separate gate in
+  `HarvestablesDrawing.js`, via `LivingResourceFilter.js`'s `shouldRenderStaticResource`/
+  `shouldRenderLivingResource`. Fixed with `HarvestablesState.ShouldRender(h Harvestable) bool`,
+  reusing the same injected `getEnchantGrid` and living/static key-map split
+  `maybeAlertResource` already had.
+- **Living/skinnable resources tracked as mobs** (`internal/radarstate/mobs.go`): the *same*
+  `LivingResourceFilter.js` gate applies a second time in `MobsDrawing.js`, for
+  `EnemyType.LivingSkinnable`/`LivingHarvestable` mob entries (a rabbit is a "mob" on the wire,
+  not a "harvestable"). `MobsState` had no grid wired at all. Fixed with
+  `MobsState.SetEnchantGrid`/`ShouldRender`, called from `internal/overlay/game.go`'s mob loop
+  alongside `HarvestablesState.ShouldRender`.
+- **Depleted resource nodes** stayed on the radar after being harvested to empty:
+  `HarvestablesDrawing.js` has a defensive `if (harvestableOne.size <= 0) continue` even though
+  the state layer is *meant* to remove a depleted node - the overlay never had the equivalent
+  guard.
+- **Chests, Fishing, Local Treasures, Knightfall Abbey portals, Wisp Cages**: all drew
+  unconditionally, ignoring `settingChest{Green,Blue,Purple,Yellow}`, `settingFishing`,
+  `settingLocalTreasures`, `settingShowKnightfallAbbey`, and `settingCage` respectively. Fixed
+  with `shouldRenderChest` (substring rarity match, ported from `ChestsDrawing.js`) and inline
+  `isOn`/`isOnDefault` checks for the rest.
+- **Wisp spawn signs** ("feu follets", the pre-portal warning marker,
+  `settingWispSpawn`/`settingWispSpawnDebugID`): not just unfiltered - **entirely unimplemented**.
+  The underlying data (`MobsState.MistSnapshot()`) already existed (used by the Dungeons Mist
+  types), but nothing in `internal/overlay` read or drew it. Added `mistPos` interpolation
+  tracking, `shouldRenderMist` (ported from `MistsWispDrawing.js`), and `drawMistWisp`.
+- **Enemies page**: the overlay's mob filter only ever checked
+  `SettingNameForEnemyType`(Normal/Enchanted/MiniBoss/Boss) - `MobsDrawing.js` also gates
+  unidentified mobs (`settingShowUnmanagedEnemies`), a minimum max-health threshold
+  (`settingShowMinimumHealthEnemies`/`settingTextMinimumHealthEnemies`), Avalonian drones
+  (`settingAvaloneDrones`), and event enemies (`settingShowEventEnemies`) - none of which existed
+  in the Go port. Consolidated into `shouldRenderMob` (`internal/overlay/game.go`), covering
+  every `EnemyType` branch `MobsDrawing.js` has.
+- **Dungeons**: no filter of any kind. `DungeonsHandler.js` applies its Solo/Group/Corrupted/
+  Hellgate + per-enchant filter at *ingestion* time (ported deliberately differently in Go -
+  `radarstate.Dungeon`'s own doc comment already explained the intent: track everything, filter
+  at draw time so a toggle takes effect on already-tracked entries immediately) - but the actual
+  draw-time filter implementing that intent had never been written. Added `shouldRenderDungeon`.
+- **`settingsPanel.isOn` defaulted to `true`** ("visible") for any setting that had never been
+  explicitly set. The doc comment claimed this matched "the web pages' own default-checked
+  checkboxes" - checking `enemies.gohtml`'s actual JS shows every `bindCheckbox` call passes no
+  default, so `SettingsSync.js`'s own `getBool(key)` default (`false`) applies: these pages are
+  opt-in, not opt-out. This one default alone meant every hostile enemy type the user had never
+  touched was shown by default, the exact opposite of the intended design - masked in practice
+  because most testing happens after at least some Enemies-page interaction. Fixed to default
+  `false`; `isOnDefault(key, def)` added for the few settings (like
+  `settingShowKnightfallAbbey`) the web app itself genuinely defaults to `true`.
+
+Nothing renders for a tier/enchant cell (or any of the above) nobody has explicitly enabled -
+matching each page's own all-unchecked-by-default state (a fresh install shows *zero* resources,
+chests, etc. until the user opts in, same as the web app always did).
+
+## Alert system: hostile-player and resource sound/flash/pulsing border never fired
+
+`PlayersState.PendingAlerts()` and `HarvestablesState.PendingAlerts()` both existed, both had doc
+comments explicitly describing the intended integration ("surfaced via `PendingAlerts()` for
+`internal/overlay` to turn into an actual native sound/flash") - and neither was ever actually
+called anywhere. The entire alert system (screen flash, sound, pulsating red border while a
+hostile player is nearby) was inert in the overlay from the day it was introduced.
+
+Fixed in `internal/overlay/audio.go` (new) + `Game.updateAlerts`/`drawAlerts`
+(`internal/overlay/game.go`):
+- `alertPlayer` wraps one process-wide `ebiten/audio.Context` (`audio.NewContext` panics if
+  constructed twice, so this must be a true singleton), decoding `web/sounds/coin.mp3` and
+  `web/sounds/player.mp3` once into raw PCM at startup (read straight off disk via `appDir`,
+  same pattern `internal/gamedata`'s loaders already use for `web/ao-bin-dumps` - no embedded-FS
+  plumbing needed). Each `play()` call spins up a fresh short-lived `audio.Player` from that PCM
+  so overlapping alerts don't fight over one player's playhead.
+- `Game.Update()` drains both `PendingAlerts()` every tick: a resource match plays `coin.mp3`
+  unconditionally (already pre-gated by `settingResourceSound` inside `HarvestablesState`
+  itself); a hostile-player alert checks `settingSound`/`settingFlash` itself (not pre-gated -
+  see `PlayersState`'s own doc comment, that gate was always meant to be the overlay's job).
+- `Game.Draw()` renders a one-shot red screen flash for `settingFlash` and a sine-wave-pulsing
+  red border for `settingFlashDangerousPlayer` while `PlayersState.ThreatPlayers()` is non-empty.
+- **Real, previously-latent data race found and fixed while wiring this up**: both
+  `pendingAlerts` slices are written from whatever goroutine dispatches Photon events and were
+  about to be read from the Ebiten goroutine with zero synchronization - harmless as long as
+  nothing called `PendingAlerts()`, a real race the moment something finally did. Added a
+  dedicated `sync.Mutex` to each (`PlayersState.alertsMu`, `HarvestablesState.alertsMu`),
+  deliberately separate from `entityList`'s own internal locking.
+
+## Bug: Black Zone hostile detection didn't work in ANY zone, not just BZ
+
+Reported as "no hostile detection in Black Zone"; the actual root cause was broader.
+`PlayersState` keeps its own copy of the current zone (`currentZone`, needed to resolve the
+zone's PvP type for `IsPlayerThreat`) - separate from `Session.CurrentZoneID`, mirroring the JS
+version's split between `window.currentMapId` (global) and each handler reading it directly. The
+router's zone-change handling (`router.go`'s `handleZoneChangeResponse`) updated
+`Session.CurrentZoneID` on every confirmed zone change but never called
+`PlayersState.SetCurrentZone` - a method that existed, was exported, and was simply never wired
+in. Consequence: `currentZone` stayed `""` forever, which broke two things at once:
+- `HandleNewCharacter`'s alert path is gated on `currentZone != ""` - permanently false, so the
+  "a hostile player just entered your zone" alert **never fired at all, in any zone type**.
+- `getAlertPvpType()` always fell back to its `"yellow"` default (can't look up a zone by empty
+  ID), so `IsPlayerThreat`'s Black Zone case ("every player is a threat regardless of faction")
+  could never be reached even by the narrower faction-change alert path that *did* still work.
+
+Fixed with one line - `r.Players.SetCurrentZone(newZoneID)` alongside the existing
+`r.Session.ChangeZone(...)` call - plus a regression test
+(`TestRouter_HandleResponse_ZoneChangeSyncsPlayersCurrentZoneForBlackZoneAlerts`) that spawns a
+passive-faction player in a real Black Zone fixture and asserts it still alerts.
+
+## Unrelated bug found during the same testing pass: WebSocket batch drops (`internal/server`)
+
+Not part of this client - `internal/server`'s WebSocket batching predates all of this work - but
+found and fixed during the same manual playtesting session. `flushBatch` tried to
+`json.Marshal` an entire ~10-message batch in one call; Go's JSON encoder refuses to serialize
+`NaN`/`Inf` (unlike JS's more permissive `JSON.stringify`), and a Photon parameter decoding to a
+raw float32 array can legitimately produce a `NaN` bit pattern. One bad message failed the whole
+batch's `Marshal` call, silently dropping all ~10 messages - and the existing diagnostic logging
+made it worse by dumping the *entire* offending message (every value in every nested array) to
+the log on every occurrence. Fixed with `marshalBatch`: try the whole batch first (unchanged fast
+path), and only on failure fall back to marshaling messages individually, keeping everything that
+actually succeeds and dropping just the real offender(s); the diagnostic log line now prints just
+the index, error, and type.
+
+## Native-only addition: enchantment color ring on resource nodes
+
+Requested directly (not a web-parity port - the web app's badge mode only shows a "+N" text
+label, not a color, for enchantment, and its default icon mode encodes it in the sprite image,
+which this client doesn't use): a colored ring around a resource node matching Albion's own
+item-quality/enchantment border convention (green/blue/purple/gold for E1-E4, no ring for
+unenchanted E0). Applied to both static harvestables (`drawEnchantRing`, square) and living/
+skinnable resources drawn as mobs (`drawEnchantRingCircle`, circle) - see `game.go`.
 
 ## Overlay window: move, resize, zoom, opacity
 
@@ -195,3 +316,9 @@ chrome, but driven by settings this package's Settings page edits:
   neither) and actual X11/OpenGL runtime libraries at runtime - `Dockerfile.linux`'s `FROM
   scratch` final stage strips those. `make build-windows` builds both binaries natively on
   Windows; Linux packaging is a follow-up.
+- **No automated coverage for the alert system's actual audio/visual output.** `updateAlerts`/
+  `drawAlerts`'s branching logic is exercised indirectly through `PendingAlerts`/`ThreatPlayers`
+  unit tests elsewhere, but nothing plays a real sound or renders a real frame in CI - manual
+  in-game verification is the only check that `coin.mp3`/`player.mp3` are audible and the flash/
+  border actually appear, same category of gap `internal/overlay/game.go`'s `Draw()` has always
+  had (no display in CI).

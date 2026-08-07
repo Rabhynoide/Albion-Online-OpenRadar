@@ -1,7 +1,7 @@
 # OpenRadar Roadmap
 
 **Version**: 2.2.0
-**Last update**: 2026-07-30
+**Last update**: 2026-08-08
 
 ## Detection systems status
 
@@ -157,19 +157,63 @@
   process from `cmd/radar`, never importing `internal/overlay`. Shared bootstrap (capture +
   HTTP/WS server) extracted into a new UI-toolkit-agnostic `internal/radarapp` package both
   binaries import; `cmd/radar`'s own `App` now embeds `*radarapp.App` and layers TUI/overlay-
-  specific wiring on top via `OnEvent`/`OnRequest`/`OnResponse` hooks. See
-  `docs/technical/NATIVE_SETTINGS_CLIENT.md`. Also fixed along the way (found via manual
-  overlay testing during this phase, not part of the original scope): the Resources page's
-  tier/enchant grid was never actually filtering what the overlay drew - `HarvestablesState`
-  only used the grid for the sound-alert gate (correctly mirroring `HarvestablesHandler.js`),
-  never for the separate visual gate `HarvestablesDrawing.js` applies in the web app
-  (`LivingResourceFilter.js`) - new `HarvestablesState.ShouldRender` closes that gap. The overlay
-  window also gained click-drag-to-move and corner-drag-to-resize (kept square; zoom rescales
-  with window size so the same detection range stays visible at any size), both persisted to
-  `overlay-window.json`, plus user-adjustable `settingOverlayZoom`/`settingOverlayMapOpacity` on
-  the Settings page. Web page removal (Radar/Players/Resources/Enemies/Chests/Ignore List/
-  Settings, Market stays web-only) is still pending, done once each native page is manually
-  validated - see `docs/technical/NATIVE_SETTINGS_CLIENT.md`'s status section for what's left.
+  specific wiring on top via `OnEvent`/`OnRequest`/`OnResponse` hooks. Dark navy/blue theme +
+  left sidebar nav approximating the web app's own look (`internal/settingsui/theme.go`/`nav.go`).
+  See `docs/technical/NATIVE_SETTINGS_CLIENT.md`.
+
+  **A full manual-testing audit turned up a long list of pre-existing gaps in the overlay**
+  (`internal/overlay`), all fixed in this same phase - most share one root cause: a filter that
+  lives in the web app's *drawing* layer (`web/scripts/drawings/*.js`) was never ported when the
+  overlay's `Draw()` loop was first written, so the setting existed and did nothing:
+  - Resources tier/enchant grid never actually filtered what the overlay drew (only gated the
+    sound alert) - new `HarvestablesState.ShouldRender`/`MobsState.ShouldRender` (the latter for
+    living/skinnable resources tracked as mobs, a *second*, separate JS gate in
+    `MobsDrawing.js`).
+  - Chests (rarity), Fishing, Local Treasures, Knightfall Abbey portals, and Wisp Cages all drew
+    unconditionally, ignoring their own settings entirely.
+  - Wisp spawn signs ("feu follets", pre-portal) weren't wired into the overlay **at all** -
+    the underlying `MobsState.MistSnapshot()` data existed but nothing read or drew it.
+  - Dungeons had no filter of any kind (`shouldRenderDungeon`, ported from
+    `DungeonsHandler.js`'s ingestion-time gate, applied at draw time instead so a toggle takes
+    effect on already-tracked entries immediately).
+  - The Enemies page's unidentified-mob toggle, minimum-health threshold, Avalonian drones, and
+    event enemies were all missing from the overlay's mob filter (only the four main hostile
+    types were gated).
+  - `settingsPanel.isOn` defaulted an unset setting to **visible**, the opposite of every one of
+    these pages' actual default-unchecked checkboxes (`SettingsSync.js`'s own `getBool` default
+    is `false`) - silently over-showing hostile enemy types nobody had opted into.
+  - **Hostile-player and resource sound/flash/pulsing-border alerts never fired at all**:
+    `PlayersState.PendingAlerts()`/`HarvestablesState.PendingAlerts()` existed, fully documented
+    as meant for the overlay to consume, but nothing ever called them. Wired up in
+    `internal/overlay/audio.go` (Ebiten's `audio`/`audio/mp3`, reusing `web/sounds/{coin,
+    player}.mp3`) + `Game.updateAlerts`/`drawAlerts`. Found and fixed a real, latent data race
+    in the process: those alert queues were written from the capture goroutine and about to be
+    read from the Ebiten goroutine with no synchronization - added dedicated mutexes.
+  - **Black Zone hostile detection didn't work AT ALL, in any zone** (not just BZ):
+    `PlayersState.SetCurrentZone` was never called by the router on a real zone change (only
+    `Session`'s own separate zone field was kept in sync), so `HandleNewCharacter`'s
+    `currentZone != ""` alert guard was permanently false and BZ's "every player is a threat"
+    rule (`IsPlayerThreat`) could never resolve correctly. Fixed in `router.go`'s
+    `handleZoneChangeResponse`.
+  - Depleted/already-harvested resource nodes stayed on the radar (missing the same `size <= 0`
+    guard `HarvestablesDrawing.js` applies).
+  - A separate, unrelated pre-existing bug surfaced during testing and fixed alongside these:
+    `internal/server`'s WebSocket batching dropped an entire 10-message batch to the browser
+    whenever a single message's Photon parameters happened to decode to `NaN` (which
+    `encoding/json` refuses to serialize) - now only the actual offending message(s) are dropped.
+
+  Also added: the overlay window is now click-drag-to-move and corner-drag-to-resize (kept
+  square; zoom rescales with window size so the same detection range stays visible at any size),
+  persisted to `overlay-window.json`; user-adjustable `settingOverlayZoom`/
+  `settingOverlayMapOpacity` on the Settings page; a colored ring around resource nodes
+  (static and living) matching Albion's own enchantment-tier colors (green/blue/purple/gold),
+  a native-overlay-only addition with no direct web equivalent.
+
+  Web page removal (Radar/Players/Resources/Enemies/Chests/Ignore List/Settings, Market stays
+  web-only) is still pending, done once each native page is manually validated - see
+  `docs/technical/NATIVE_SETTINGS_CLIENT.md`'s status section for what's left. Embedding a map
+  view directly in `cmd/radar-settings` (as an alternative to launching the separate overlay
+  window) was scoped and deliberately deferred - real work, not started.
 
 ## Closed in v2.2
 
