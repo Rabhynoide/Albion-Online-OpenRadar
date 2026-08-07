@@ -126,6 +126,14 @@
   `UpsertBuyObservations`) so a sell-only or buy-only observation can't wipe out the other side
   of a previously-cached row. Black Market observations aren't attributed (not in `zones.json`
   under that name).
+- **UPDATE-1** (#24): check-and-notify auto-update - at launch, `cmd/radar` checks GitHub's
+  latest published release on the user's fork (`Rabhynoide/Albion-Online-OpenRadar`, hardcoded,
+  throttled to once/hour) and, if newer, shows a dismissible notice with a link to the release
+  on both surfaces (sidebar badge on the web UI, header line on the TUI dashboard). No silent
+  binary self-replacement. New `internal/updatecheck` client package,
+  `Config.UpdateCheck` in `network.json`, `GET/POST /api/settings/update(/dismiss)`
+  (`internal/server/update_settings_api.go`), `web/scripts/core/UpdateBadge.js`. See
+  `docs/technical/AUTO_UPDATE_CHECK.md`.
 
 ## Closed in v2.2
 

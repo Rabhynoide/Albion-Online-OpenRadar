@@ -44,6 +44,7 @@ type HTTPServer struct {
 	settingsSyncAPI   *SettingsSyncAPI
 	marketAPI         *MarketAPI
 	marketSettingsAPI *MarketSettingsAPI
+	updateSettingsAPI *UpdateSettingsAPI
 	// assetCache holds already-gzip-compressed static assets (see readAssetCached). Only
 	// populated in prod mode - embed.FS content is immutable for the process lifetime, but dev
 	// mode's os.DirFS deliberately reads live from disk on every request for hot-reload.
@@ -136,6 +137,7 @@ func NewHTTPServer(
 	s.settingsSyncAPI = NewSettingsSyncAPI(appDir)
 	s.marketAPI = NewMarketAPI(appDir)
 	s.marketSettingsAPI = NewMarketSettingsAPI(appDir)
+	s.updateSettingsAPI = NewUpdateSettingsAPI(appDir, version)
 	s.setupRoutes()
 	return s, nil
 }
@@ -185,6 +187,7 @@ func NewHTTPServerDev(
 	s.settingsSyncAPI = NewSettingsSyncAPI(appDir)
 	s.marketAPI = NewMarketAPI(appDir)
 	s.marketSettingsAPI = NewMarketSettingsAPI(appDir)
+	s.updateSettingsAPI = NewUpdateSettingsAPI(appDir, version)
 	s.setupRoutes()
 	return s, nil
 }
@@ -238,6 +241,7 @@ func (s *HTTPServer) setupRoutes() {
 	s.settingsSyncAPI.Register(apiMux)
 	s.marketAPI.Register(apiMux)
 	s.marketSettingsAPI.Register(apiMux)
+	s.updateSettingsAPI.Register(apiMux)
 	s.mux.Handle("/api/", noStore(apiMux))
 }
 

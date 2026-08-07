@@ -84,6 +84,12 @@ type CaptureStateMsg struct {
 	Status       string
 }
 
+// UpdateAvailableMsg reports that a newer OpenRadar release is available (cmd/radar's
+// startUpdateCheck), sent at most once per launch.
+type UpdateAvailableMsg struct {
+	Version string
+}
+
 type RestartMsg struct{}
 
 type TickMsg time.Time
@@ -111,6 +117,10 @@ type Dashboard struct {
 	lanWsURL     string
 	mode         string
 	port         int
+
+	// Set at most once per launch by UpdateAvailableMsg
+	updateAvailable bool
+	latestVersion   string
 
 	// Capture interfaces and LAN addresses (sourced from Manager.State() poll)
 	captureInterfaces []CaptureSummary
@@ -386,6 +396,10 @@ func (d Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		d.wsRunning = msg.WSRunning
 		d.captureRunning = msg.CaptureRunning
 
+	case UpdateAvailableMsg:
+		d.updateAvailable = true
+		d.latestVersion = msg.Version
+
 	case CaptureStateMsg:
 		d.captureInterfaces = msg.Active
 		d.lanAddresses = msg.LanAddresses
@@ -526,8 +540,13 @@ func (d Dashboard) View() string {
 }
 
 func (d *Dashboard) renderHeader() string {
-	// Title and status indicators
+	// Title and status indicators. The update notice is appended inline rather than on its own
+	// line so headerHeight never needs recalculating (a mismatched viewport height previously
+	// caused a slice-bounds panic - see LogMsg's guard above).
 	title := TitleStyle.Render("OpenRadar v" + d.version)
+	if d.updateAvailable {
+		title += LogWarnStyle.Render(" • update available: v" + d.latestVersion)
+	}
 
 	httpStatus := statusIndicator(d.httpRunning, "HTTP")
 	wsStatus := statusIndicator(d.wsRunning, "WS")

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -38,11 +39,25 @@ type MarketConfig struct {
 	Region string `json:"region"` // "europe" (default), "americas", or "asia"
 }
 
+// UpdateCheckConfig caches the result of the launch-time GitHub release check (see
+// internal/updatecheck) so the web UI's GET /api/settings/update can report "is an update
+// available" without making its own outbound call, and so a dismissed version stays dismissed
+// across restarts. LatestVersion/ReleaseURL/LastChecked are facts about what GitHub reported as
+// of the last check - "is there actually an update" is always recomputed against the running
+// binary's own Version at read time, never baked into what's persisted here.
+type UpdateCheckConfig struct {
+	LatestVersion    string    `json:"latestVersion"`
+	ReleaseURL       string    `json:"releaseUrl"`
+	LastChecked      time.Time `json:"lastChecked"`
+	DismissedVersion string    `json:"dismissedVersion"`
+}
+
 type Config struct {
 	CaptureInterfaces []PersistedInterface `json:"captureInterfaces"`
 	Logging           LoggingConfig        `json:"logging"`
 	Hub               HubConfig            `json:"hub"`
 	Market            MarketConfig         `json:"market"`
+	UpdateCheck       UpdateCheckConfig    `json:"updateCheck"`
 }
 
 func ReadConfig(appDir string) (Config, error) {

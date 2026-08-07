@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -29,6 +30,38 @@ func TestCaptureStateMsgUpdatesFields(t *testing.T) {
 	}
 	if out.lanServerURL == "" {
 		t.Error("lanServerURL not derived from first LAN address")
+	}
+}
+
+func TestUpdateAvailableMsgSetsFields(t *testing.T) {
+	d := NewDashboard("1.0.2", 5001, true, nil, nil)
+	updated, _ := d.Update(UpdateAvailableMsg{Version: "1.1.0"})
+	out, ok := updated.(Dashboard)
+	if !ok {
+		t.Fatal("Update did not return Dashboard")
+	}
+	if !out.updateAvailable {
+		t.Error("updateAvailable = false, want true")
+	}
+	if out.latestVersion != "1.1.0" {
+		t.Errorf("latestVersion = %q, want 1.1.0", out.latestVersion)
+	}
+}
+
+// The update notice is appended inline onto the title line rather than as a new header row
+// (see renderHeader) specifically to avoid recalculating headerHeight/viewport sizing - this
+// guards that renderHeader still renders without panicking once the notice is present.
+func TestUpdateAvailableMsgRendersWithoutPanic(t *testing.T) {
+	d := NewDashboard("1.0.2", 5001, true, nil, nil)
+	updated, _ := d.Update(UpdateAvailableMsg{Version: "1.1.0"})
+	out := updated.(Dashboard)
+	out.width = 120
+	out.height = 40
+	out.ready = true
+
+	header := out.renderHeader()
+	if !strings.Contains(header, "update available: v1.1.0") {
+		t.Errorf("header does not mention the available update:\n%s", header)
 	}
 }
 

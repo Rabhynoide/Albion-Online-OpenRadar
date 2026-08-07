@@ -20,6 +20,7 @@ import (
 	"github.com/nospy/albion-openradar/internal/photon"
 	"github.com/nospy/albion-openradar/internal/server"
 	"github.com/nospy/albion-openradar/internal/ui"
+	"github.com/nospy/albion-openradar/internal/updatecheck"
 )
 
 // Version info (injected at build time via ldflags)
@@ -33,6 +34,9 @@ const (
 	serverPort      = 5001
 	shutdownTimeout = 10 * time.Second
 	pcapCaptureDir  = "./logs/captures"
+	// updateCheckInterval throttles how often startUpdateCheck actually calls the GitHub API,
+	// mirroring internal/hub's own marketStaleAfter-style cache TTL precedent.
+	updateCheckInterval = time.Hour
 )
 
 type App struct {
@@ -131,6 +135,7 @@ func runApp(cfg Config) bool {
 	app.program = tea.NewProgram(dashboard, tea.WithAltScreen())
 
 	app.startCaptureStatePoll()
+	app.startUpdateCheck(appDir)
 
 	// Track if restart was requested
 	restartRequested := false
@@ -482,4 +487,56 @@ func (app *App) startCaptureStatePoll() {
 			}
 		}
 	})
+}
+
+// startUpdateCheck fires a one-shot (not ticker) background check for a newer OpenRadar
+// release. It never blocks startup and never surfaces a network failure anywhere - same
+// "never let an optional external call disrupt the app" philosophy as the Hub fallback paths.
+// See docs/technical/AUTO_UPDATE_CHECK.md.
+func (app *App) startUpdateCheck(appDir string) {
+	app.wg.Go(func() {
+		if Version == "" || Version == "dev" {
+			return
+		}
+
+		cfg, err := capture.ReadConfig(appDir)
+		if err != nil {
+			return
+		}
+
+		// Throttle: reuse the persisted result instead of hitting GitHub again if we checked
+		// recently (e.g. the user restarted the radar shortly after the last launch).
+		if time.Since(cfg.UpdateCheck.LastChecked) < updateCheckInterval {
+			app.notifyIfUpdateAvailable(cfg.UpdateCheck.LatestVersion, cfg.UpdateCheck.DismissedVersion)
+			return
+		}
+
+		release, err := updatecheck.NewClient(updatecheck.DefaultRepo).FetchLatest()
+		if err != nil {
+			logger.PrintWarn("UPDATE", "check failed: %v", err)
+			return
+		}
+
+		var dismissed string
+		if err := capture.MutateConfig(appDir, func(c *capture.Config) {
+			c.UpdateCheck.LatestVersion = release.TagName
+			c.UpdateCheck.ReleaseURL = release.HTMLURL
+			c.UpdateCheck.LastChecked = time.Now()
+			dismissed = c.UpdateCheck.DismissedVersion
+		}); err != nil {
+			logger.PrintWarn("UPDATE", "persist check result failed: %v", err)
+			return
+		}
+
+		app.notifyIfUpdateAvailable(release.TagName, dismissed)
+	})
+}
+
+func (app *App) notifyIfUpdateAvailable(latest, dismissed string) {
+	if app.program == nil {
+		return
+	}
+	if updatecheck.IsNewer(Version, latest) && latest != dismissed {
+		app.program.Send(ui.UpdateAvailableMsg{Version: latest})
+	}
 }
