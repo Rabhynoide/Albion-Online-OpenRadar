@@ -1,8 +1,6 @@
 package overlay
 
 import (
-	"strconv"
-
 	"github.com/nospy/albion-openradar/internal/syncsettings"
 )
 
@@ -14,80 +12,36 @@ func readSettings(appDir string) map[string]string {
 	return settings
 }
 
-func writeSettingBool(appDir, key string, value bool) {
-	_ = syncsettings.Set(appDir, key, strconv.FormatBool(value))
-}
-
-// toggle mirrors one keyboard-driven settings toggle: a key to poll, the syncsettings key it
-// reads/writes, a human label for the HUD, and whether it's currently on. Kept intentionally
-// simple (a handful of standalone booleans, not the Resources page's full tier x enchant grid -
-// see docs/technical/NATIVE_OVERLAY_CLIENT.md for why a full graphical settings panel was
-// scoped out of this first pass) but real: each one actually gates what Draw() renders.
-type toggle struct {
-	key       ebitenKey
-	settingID string
-	label     string
-	on        bool
-	wasDown   bool
-}
-
-// settingsPanel owns every keyboard-toggle and persists changes to settings-sync.json,
-// defaulting each toggle to "on" (matches the web Settings page's own default-visible
-// checkboxes) when the key has never been set.
+// settingsPanel is a read-only view onto settings-sync.json - the same file
+// web/scripts/utils/SettingsSync.js write-throughs to from the web app's Resources/Enemies/
+// Settings pages, which remain the only place these get edited. The overlay never writes here
+// itself: it only reads, to decide what to draw (e.g. Draw()'s per-EnemyType visibility
+// filter) - deliberately kept simple rather than duplicating a settings UI inside the overlay
+// window, see docs/technical/NATIVE_OVERLAY_CLIENT.md.
 type settingsPanel struct {
-	appDir  string
-	toggles []*toggle
+	appDir   string
+	snapshot map[string]string
 }
 
 func newSettingsPanel(appDir string) *settingsPanel {
 	p := &settingsPanel{appDir: appDir}
-	saved := readSettings(appDir)
-	add := func(key ebitenKey, settingID, label string) {
-		on := true
-		if v, ok := saved[settingID]; ok {
-			on = v == "true"
-		}
-		p.toggles = append(p.toggles, &toggle{key: key, settingID: settingID, label: label, on: on})
-	}
-
-	add(keyF2, "settingNormalEnemy", "Normal enemies")
-	add(keyF3, "settingEnchantedEnemy", "Enchanted enemies")
-	add(keyF4, "settingMiniBossEnemy", "Mini-bosses")
-	add(keyF5, "settingBossEnemy", "Bosses")
-	add(keyF6, "settingResourceSound", "Resource sound alert")
-
+	p.refresh()
 	return p
 }
 
-// update polls every toggle's key globally (same reasoning as the click-through F9 toggle -
-// see clickthrough_windows.go) and flips+persists on a fresh keydown.
-func (p *settingsPanel) update() {
-	for _, t := range p.toggles {
-		down := isKeyDownGlobally(t.key)
-		if down && !t.wasDown {
-			t.on = !t.on
-			writeSettingBool(p.appDir, t.settingID, t.on)
-		}
-		t.wasDown = down
-	}
+// refresh re-reads settings-sync.json - cheap enough to call once per Update() tick so a
+// change made on the web app while the overlay is running takes effect on the very next frame,
+// without re-reading the file once per entity per frame.
+func (p *settingsPanel) refresh() {
+	p.snapshot = readSettings(p.appDir)
 }
 
-var keyLabels = map[ebitenKey]string{
-	keyF2: "F2", keyF3: "F3", keyF4: "F4", keyF5: "F5", keyF6: "F6", keyF9: "F9",
-}
-
-func keyLabel(k ebitenKey) string {
-	if label, ok := keyLabels[k]; ok {
-		return label
-	}
-	return "?"
-}
-
+// isOn reports a boolean setting's current value, defaulting to true (visible) for a setting
+// that's never been set - matches the web Settings/Resources/Enemies pages' own default-checked
+// checkboxes.
 func (p *settingsPanel) isOn(settingID string) bool {
-	for _, t := range p.toggles {
-		if t.settingID == settingID {
-			return t.on
-		}
+	if v, ok := p.snapshot[settingID]; ok {
+		return v == "true"
 	}
-	return true // an unmanaged setting defaults to visible, matching the web page's own defaults
+	return true
 }

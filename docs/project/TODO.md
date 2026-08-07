@@ -134,6 +134,18 @@
   `Config.UpdateCheck` in `network.json`, `GET/POST /api/settings/update(/dismiss)`
   (`internal/server/update_settings_api.go`), `web/scripts/core/UpdateBadge.js`. See
   `docs/technical/AUTO_UPDATE_CHECK.md`.
+- **OVERLAY-1**: native click-through radar overlay (`cmd/radar -overlay`) - an undecorated,
+  transparent, always-on-top Ebiten window that renders on top of the game, click-through
+  togglable via F9 (global key poll, since window focus is unreachable once passthrough is
+  active). Purely a visual companion to the existing web app, not a replacement - Players/
+  Chests/Market/Settings/Resources/Enemies/Ignore List all stay on the web app, which keeps
+  running unchanged; the overlay only reads `settings-sync.json` to decide what to draw, never
+  writes to it. New `internal/gamedata` (Go port of the JS `*Database.js` loaders) and
+  `internal/radarstate` (Go port of every `web/scripts/handlers/*.js` handler plus a `Router`
+  mirroring `EventRouter.js`'s dispatch - caught a real bug in the process, see
+  `docs/technical/NATIVE_OVERLAY_CLIENT.md`). Renders harvestables, mobs, the local player, and
+  the zone map background; Chests/Dungeons/Fishing/LocalTreasures/Mists/WispCages/clustering/
+  health bars are tracked in `internal/radarstate` already but not yet drawn.
 
 ## Closed in v2.2
 

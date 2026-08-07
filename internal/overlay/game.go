@@ -25,11 +25,13 @@ const (
 // Dungeons/Fishing/LocalTreasures/Mists/WispCages/cluster rings/health bars are follow-up work
 // once this core loop is visually validated - see docs/technical/NATIVE_OVERLAY_CLIENT.md.
 type Game struct {
-	state    *State
-	settings *settingsPanel
+	state     *State
+	settings  *settingsPanel
+	mapImages *mapImageCache
 
 	harvestablePos map[int]*EntityPos
 	mobPos         map[int]*EntityPos
+	mapHX, mapHY   float64
 
 	width, height int
 	lastFrame     time.Time
@@ -42,6 +44,7 @@ func NewGame(state *State, appDir string) *Game {
 	return &Game{
 		state:          state,
 		settings:       newSettingsPanel(appDir),
+		mapImages:      newMapImageCache(appDir),
 		harvestablePos: make(map[int]*EntityPos),
 		mobPos:         make(map[int]*EntityPos),
 		width:          defaultWindow,
@@ -81,7 +84,7 @@ func (g *Game) Update() error {
 	}
 	g.f9WasDown = f9Down
 
-	g.settings.update()
+	g.settings.refresh()
 	g.updateInterpolation(dt)
 	return nil
 }
@@ -102,6 +105,8 @@ func (g *Game) updateInterpolation(dt time.Duration) {
 	}
 	t := lerpFactor(dt)
 	lpX, lpY := float64(g.state.Session.LocalX), float64(g.state.Session.LocalY)
+
+	MapInterpolate(&g.mapHX, &g.mapHY, lpX, lpY, t)
 
 	if g.state.Harvestables != nil {
 		live := make(map[int]struct{})
@@ -148,6 +153,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	center := float32(g.width) / 2
 	zoom := 1.0 // TODO: wire to the settings panel's zoom control once it exists
 
+	g.drawMapBackground(screen, zoom, float64(center))
+
 	if g.state != nil && g.state.Harvestables != nil {
 		for _, h := range g.state.Harvestables.Snapshot() {
 			e := g.harvestablePos[h.ID]
@@ -181,6 +188,48 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.drawHUD(screen)
 }
 
+// drawMapBackground mirrors MapDrawing.js's draw()+DrawImageMap(): renders the current zone's
+// pre-rendered map tile, positioned/rotated/scaled via MapScreenTransform so it stays aligned
+// under the entities TransformPoint draws on top of it.
+func (g *Game) drawMapBackground(screen *ebiten.Image, zoomLevel, canvasCenter float64) {
+	if g.state == nil || g.state.Session == nil || g.state.Zones == nil {
+		return
+	}
+	zoneID := g.state.Session.CurrentZoneID
+	if zoneID == "" {
+		return
+	}
+	zone, ok := g.state.Zones.GetZone(zoneID)
+	if !ok {
+		return
+	}
+	name := mapImageName(zone.File)
+	if name == "" {
+		return
+	}
+	img := g.mapImages.get(name)
+	if img == nil {
+		return
+	}
+
+	extent, centerX, centerY := mapAssetExtentCenter(zone)
+	screenX, screenY, size := MapScreenTransform(g.mapHX, g.mapHY, centerX, centerY, extent, zoomLevel, canvasCenter)
+
+	bounds := img.Bounds()
+	nativeW, nativeH := float64(bounds.Dx()), float64(bounds.Dy())
+	if nativeW == 0 || nativeH == 0 {
+		return
+	}
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(size/nativeW, size/nativeH)
+	op.GeoM.Translate(-size/2, -size/2)
+	op.GeoM.Rotate(mapRotationRad)
+	op.GeoM.Scale(1, -1)
+	op.GeoM.Translate(screenX, screenY)
+	screen.DrawImage(img, op)
+}
+
 func (g *Game) drawHUD(screen *ebiten.Image) {
 	passthroughState := "OFF"
 	if g.clickThrough {
@@ -207,13 +256,6 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 	var hud strings.Builder
 	fmt.Fprintf(&hud, "OpenRadar overlay\nF9: click-through %s\nZone: %s\nMobs: %d  Resources: %d",
 		passthroughState, zone, mobCount, harvCount)
-	for _, t := range g.settings.toggles {
-		state := "off"
-		if t.on {
-			state = "on"
-		}
-		fmt.Fprintf(&hud, "\n%s: %s (%s)", t.label, state, keyLabel(t.key))
-	}
 	ebitenutil.DebugPrint(screen, hud.String())
 }
 

@@ -7,19 +7,12 @@ package overlay
 // used instead of a normal Ebiten key listener.
 type ebitenKey int
 
-const (
-	keyF2 ebitenKey = iota
-	keyF3
-	keyF4
-	keyF5
-	keyF6
-	keyF9
-)
+const keyF9 ebitenKey = 0
 
 // isKeyDownGlobally has no cross-platform equivalent to Windows' GetAsyncKeyState implemented
-// yet - global key toggles are a Windows-only capability for now (see
+// yet - the click-through toggle is a Windows-only capability for now (see
 // docs/technical/NATIVE_OVERLAY_CLIENT.md). Always reports "not pressed" elsewhere, so the
-// overlay still builds and runs on Linux, just without the toggles.
+// overlay still builds and runs on Linux, just without the toggle.
 func isKeyDownGlobally(key ebitenKey) bool {
 	return false
 }
