@@ -27,6 +27,8 @@ Index of the documentation that ships with the repo.
 | [DEATHEYE_ANALYSIS.md](./technical/DEATHEYE_ANALYSIS.md) | architecture comparison with the DEATHEYE project, lessons kept |
 | [PROTOCOL18_OBSERVED_CODES.md](./technical/PROTOCOL18_OBSERVED_CODES.md) | observed event and op codes with counts |
 | [PROTOCOL18_PARAM_LAYOUTS.md](./technical/PROTOCOL18_PARAM_LAYOUTS.md) | wire parameter layouts per event code |
+| [NATIVE_OVERLAY_CLIENT.md](./technical/NATIVE_OVERLAY_CLIENT.md) | native click-through map overlay (`cmd/radar -overlay`, Ebiten) |
+| [NATIVE_SETTINGS_CLIENT.md](./technical/NATIVE_SETTINGS_CLIENT.md) | native browser-free settings app (`cmd/radar-settings`, Fyne), why it's a separate binary from the overlay |
 
 ## Releases
 

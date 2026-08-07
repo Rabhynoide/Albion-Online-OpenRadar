@@ -243,3 +243,34 @@ func TestRouter_HandleResponse_JoinDecodesPositionAndZone(t *testing.T) {
 		t.Errorf("Session position = (%v,%v), want (1,2)", r.Session.LocalX, r.Session.LocalY)
 	}
 }
+
+// @verified: reproduces the reported bug ("no hostile player detection in BZ") and its actual
+// root cause: PlayersState.SetCurrentZone was never called on a zone change, so
+// HandleNewCharacter's currentZone != "" guard was permanently false and no new-character alert
+// ever fired, in any zone - not just Black Zones. A passive-faction player (not individually
+// flagged Hostile) must still alert in a Black Zone, where IsPlayerThreat treats every player as
+// a threat regardless of faction - this only passes if the zone-change response actually synced
+// PlayersState's own currentZone field.
+func TestRouter_HandleResponse_ZoneChangeSyncsPlayersCurrentZoneForBlackZoneAlerts(t *testing.T) {
+	fsys := fstest.MapFS{
+		"zones.json": mapFile(`{
+			"3316": {"name":"Battlebrae Flatland","type":"OPENPVP","pvpType":"black","tier":5,"file":"3316_OP","bounds":{"min":[0,0],"max":[100,100]}}
+		}`),
+	}
+	zonesDB, err := gamedata.LoadZones(fsys, "zones.json")
+	if err != nil {
+		t.Fatalf("LoadZones: %v", err)
+	}
+
+	r := newTestRouter(t)
+	r.Players = NewPlayersState(NewPartyRoster(), zonesDB, func(string) bool { return false })
+
+	r.HandleResponse(responseWithCode(operationcodes.ChangeCluster, Params{0: "3316"}), r.ClearAll)
+
+	r.Players.HandleNewCharacter(1, Params{1: "SomePassivePlayer", 53: int32(FactionPassive)})
+
+	alerts := r.Players.PendingAlerts()
+	if len(alerts) != 1 || alerts[0] != "SomePassivePlayer" {
+		t.Errorf("PendingAlerts() = %v, want [SomePassivePlayer] (a Black Zone should alert on every player, regardless of faction)", alerts)
+	}
+}

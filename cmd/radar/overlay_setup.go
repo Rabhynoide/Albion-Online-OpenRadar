@@ -59,9 +59,12 @@ func buildOverlayState(appDir string) (*overlay.State, *radarstate.Router, error
 		func() bool { return readSettingBool(appDir, "settingResourceSound") },
 	)
 
+	mobsState := radarstate.NewMobsState(mobsDB)
+	mobsState.SetEnchantGrid(func(key string) radarstate.EnchantGrid { return readEnchantGrid(appDir, key) })
+
 	router := &radarstate.Router{
 		Players:        playersState,
-		Mobs:           radarstate.NewMobsState(mobsDB),
+		Mobs:           mobsState,
 		Harvestables:   harvestablesState,
 		Chests:         radarstate.NewChestsState(),
 		Dungeons:       radarstate.NewDungeonsState(),

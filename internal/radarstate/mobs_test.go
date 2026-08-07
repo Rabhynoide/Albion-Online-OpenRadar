@@ -116,6 +116,62 @@ func TestMobsState_HandleNewMob_LivingResource(t *testing.T) {
 	}
 }
 
+// @verified: mirrors MobsDrawing.js's EnemyType.LivingSkinnable/LivingHarvestable branch
+// (LivingResourceFilter.js's shouldRenderLivingResource) - a living-resource mob (a skinnable
+// animal like "Lapin des neiges") is a SEPARATE draw-time gate from the Enemies-page filter
+// hostile mobs use, and was missing entirely from the overlay before this test was added
+// (reported: living-resource mobs always rendered regardless of the Resources page grid).
+func TestMobsState_ShouldRender_EmptyGridHidesLivingResource(t *testing.T) {
+	db := hostileMobsDB(t)
+	critterID, _ := db.GetIDByName("CRITTER_HIDE")
+	s := NewMobsState(db)
+	s.SetEnchantGrid(func(string) EnchantGrid { return nil })
+	s.HandleNewMob(Params{0: int32(1), 1: int32(critterID), 2: int32(255), 7: []float32{0, 0}, 33: int32(2)})
+	m := s.MobSnapshot()[0]
+
+	if s.ShouldRender(m) {
+		t.Error("ShouldRender should be false when nothing is checked on the Resources page (the default)")
+	}
+}
+
+func TestMobsState_ShouldRender_FullGridShowsLivingResource(t *testing.T) {
+	db := hostileMobsDB(t)
+	critterID, _ := db.GetIDByName("CRITTER_HIDE")
+	s := NewMobsState(db)
+	s.SetEnchantGrid(func(string) EnchantGrid { return fullEnchantGrid() })
+	s.HandleNewMob(Params{0: int32(1), 1: int32(critterID), 2: int32(255), 7: []float32{0, 0}, 33: int32(2)})
+	m := s.MobSnapshot()[0]
+
+	if !s.ShouldRender(m) {
+		t.Error("ShouldRender should be true when the grid has every cell checked")
+	}
+}
+
+func TestMobsState_ShouldRender_HostileMobsAlwaysTrue(t *testing.T) {
+	db := hostileMobsDB(t)
+	bossID, _ := db.GetIDByName("T5_MOB_BOSS_KEEPER")
+	s := NewMobsState(db)
+	s.SetEnchantGrid(func(string) EnchantGrid { return nil }) // would hide a living resource
+	s.HandleNewMob(Params{0: int32(1), 1: int32(bossID), 2: int32(255), 7: []float32{10, 20}, 13: int32(50000)})
+	m := s.MobSnapshot()[0]
+
+	if !s.ShouldRender(m) {
+		t.Error("ShouldRender should always be true for non-living-resource enemy types (their own Enemies-page gate applies separately)")
+	}
+}
+
+func TestMobsState_ShouldRender_NilGridDefaultsTrue(t *testing.T) {
+	db := hostileMobsDB(t)
+	critterID, _ := db.GetIDByName("CRITTER_HIDE")
+	s := NewMobsState(db) // SetEnchantGrid never called
+	s.HandleNewMob(Params{0: int32(1), 1: int32(critterID), 2: int32(255), 7: []float32{0, 0}, 33: int32(2)})
+	m := s.MobSnapshot()[0]
+
+	if !s.ShouldRender(m) {
+		t.Error("ShouldRender should default to true when no grid function is wired at all")
+	}
+}
+
 func TestMobsState_HandleNewMob_UnknownMobStaysDefault(t *testing.T) {
 	s := NewMobsState(hostileMobsDB(t))
 	s.HandleNewMob(Params{0: int32(1), 1: int32(99999), 2: int32(255), 7: []float32{0, 0}})

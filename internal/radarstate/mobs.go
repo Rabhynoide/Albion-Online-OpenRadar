@@ -107,6 +107,11 @@ type MobsState struct {
 	mobs  *entityList[int, Mob]
 	mists *entityList[int, Mist]
 	db    *gamedata.MobsDatabase
+	// getEnchantGrid resolves a Resources-page settings key, same role as
+	// HarvestablesState's field of the same name - set via SetEnchantGrid rather than required
+	// at construction, so the many existing tests that don't care about resource filtering (this
+	// state's real job is hostile-mob tracking) don't all need updating for it.
+	getEnchantGrid func(key string) EnchantGrid
 }
 
 func NewMobsState(db *gamedata.MobsDatabase) *MobsState {
@@ -115,6 +120,31 @@ func NewMobsState(db *gamedata.MobsDatabase) *MobsState {
 		mists: newEntityList[int, Mist](),
 		db:    db,
 	}
+}
+
+// SetEnchantGrid wires the Resources-page grid lookup used by ShouldRender - see the field doc.
+func (s *MobsState) SetEnchantGrid(fn func(key string) EnchantGrid) {
+	s.getEnchantGrid = fn
+}
+
+// ShouldRender reports whether m currently matches the Resources page's tier/enchant filter -
+// mirrors MobsDrawing.js's EnemyType.LivingSkinnable/LivingHarvestable branch
+// (LivingResourceFilter.js's shouldRenderLivingResource), the SAME visual gate
+// HarvestablesState.ShouldRender applies to static/other-living resources. Every other EnemyType
+// is unaffected and always reports true here - it has its own Enemies-page gate, see
+// SettingNameForEnemyType.
+func (s *MobsState) ShouldRender(m Mob) bool {
+	if m.Type != EnemyLivingHarvestable && m.Type != EnemyLivingSkinnable {
+		return true
+	}
+	if s.getEnchantGrid == nil {
+		return true
+	}
+	key, ok := livingSettingKeyByName[m.Name]
+	if !ok {
+		return false
+	}
+	return s.getEnchantGrid(key).cell(m.EnchantmentLevel, m.Tier)
 }
 
 // HandleNewMob ports NewMobEvent: id=[0], typeId=[1], location=[7]??[0,0], health=[2]??255,

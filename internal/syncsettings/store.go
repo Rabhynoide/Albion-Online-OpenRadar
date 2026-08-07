@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 const filename = "settings-sync.json"
@@ -45,11 +46,29 @@ func writeAll(appDir string, settings map[string]string) error {
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return fmt.Errorf("write tmp: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameWithRetry(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("rename tmp: %w", err)
 	}
 	return nil
+}
+
+// renameWithRetry works around a transient Windows file-sharing collision: this file is read
+// very frequently by a separate process (internal/overlay re-reads it roughly every frame), and
+// Go's os.ReadFile doesn't request FILE_SHARE_DELETE, so a rename onto the destination can fail
+// with "Access is denied" if it lands mid-read. The reader's handle is only ever held for a fast
+// open-read-close, so a handful of short retries reliably clears it - a real, observed failure
+// (a Resources-page checkbox toggle silently not persisting, breaking its sound alert), not a
+// hypothetical one.
+func renameWithRetry(oldpath, newpath string) error {
+	var err error
+	for range 5 {
+		if err = os.Rename(oldpath, newpath); err == nil {
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return err
 }
 
 // Set upserts one key atomically (read-modify-write, same pattern as capture.MutateConfig).

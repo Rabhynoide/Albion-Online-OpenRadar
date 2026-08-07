@@ -28,7 +28,7 @@ DIST := dist
 # local layer cache already applies without any extra flags.
 DOCKER_BUILD_ARGS ?=
 
-.PHONY: help dev run css css-watch vendors test lint lint-fix clean \
+.PHONY: help dev run run-settings css css-watch vendors test lint lint-fix clean \
         install-tools assets restore-assets refresh-assets \
         update-ao-data download-icons download-spells download-map \
         refresh-codes gen-codes \
@@ -44,7 +44,8 @@ help: ## Display help
 	@echo ""
 	@echo "Development:"
 	@echo "  dev               Run with hot-reload (requires air)"
-	@echo "  run               Run once without hot-reload"
+	@echo "  run               Run once without hot-reload (cmd/radar - TUI/-overlay)"
+	@echo "  run-settings      Run the native settings app (cmd/radar-settings, no browser needed)"
 	@echo "  css               Build Tailwind CSS"
 	@echo "  css-watch         Watch Tailwind CSS"
 	@echo "  vendors           Copy vendor JS + fonts"
@@ -53,7 +54,8 @@ help: ## Display help
 	@echo "  assets            Prepare embedded assets (CSS, vendors, gzip data)"
 	@echo "  restore-assets    Restore source tree after assets step"
 	@echo "  build-linux       Build Linux binary (native on Linux, Docker elsewhere)"
-	@echo "  build-windows     Build Windows .exe (native on Windows, Docker elsewhere)"
+	@echo "  build-windows     Build Windows .exe: radar + radar-settings (native on Windows only"
+	@echo "                    for radar-settings for now - see build-windows's own comments)"
 	@echo "  all-in-one        assets + both binaries + READMEs + checksums + restore"
 	@echo ""
 	@echo "Assets refresh (committed to repo):"
@@ -91,6 +93,9 @@ dev: css vendors ## Run with hot-reload
 
 run: css vendors ## Run without hot-reload
 	go run ./cmd/radar -dev
+
+run-settings: css vendors ## Run the native settings app (no browser needed)
+	go run ./cmd/radar-settings -dev
 
 css: ## Build Tailwind CSS
 	npm run css
@@ -184,11 +189,22 @@ else
 		--build-arg VERSION=$(VERSION) --build-arg BUILD_TIME=$(BUILD_TIME) .
 endif
 
-build-windows: | $(DIST) ## Build Windows .exe
+build-windows: | $(DIST) ## Build Windows .exe (radar + radar-settings, native only - see note below)
 ifneq (,$(findstring mingw,$(HOST_OS))$(findstring msys,$(HOST_OS)))
 	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
 		go build -ldflags="$(LDFLAGS)" -o $(DIST)/OpenRadar-windows-amd64.exe ./cmd/radar
+	# cmd/radar-settings (Fyne) needs a real C toolchain (CGO) on the PATH - see
+	# docs/technical/NATIVE_SETTINGS_CLIENT.md for the MinGW-w64/WinLibs setup. It's built into
+	# the SAME $(DIST) directory as OpenRadar-windows-amd64.exe on purpose: the settings app's
+	# "launch overlay" button looks for radar.exe next to its own executable.
+	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+		go build -ldflags="$(LDFLAGS)" -o $(DIST)/OpenRadarSettings-windows-amd64.exe ./cmd/radar-settings
 else
+	# Docker path only builds cmd/radar today (Dockerfile.windows). cmd/radar-settings (Fyne)
+	# isn't wired into either Docker build yet - it needs a C/GL toolchain and, for Linux, actual
+	# X11/OpenGL runtime libraries in the final image (Dockerfile.linux's FROM scratch strips
+	# those), unlike cmd/radar's ebiten/purego path which needs neither at build time. Build it
+	# natively on Windows (the branch above) in the meantime.
 	docker build -f Dockerfile.windows -o $(DIST)/ $(DOCKER_BUILD_ARGS) \
 		--build-arg VERSION=$(VERSION) --build-arg BUILD_TIME=$(BUILD_TIME) .
 endif

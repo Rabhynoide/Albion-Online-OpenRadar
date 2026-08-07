@@ -3,6 +3,7 @@ package radarstate
 import (
 	"math"
 	"strconv"
+	"sync"
 
 	"github.com/nospy/albion-openradar/internal/gamedata"
 )
@@ -61,6 +62,10 @@ var harvestableTypeMap = map[string]string{
 // HarvestablesState is a Go port of HarvestablesHandler.js. Sound alerts are surfaced via
 // PendingAlerts() rather than played directly (no browser Audio API here) - see
 // internal/radarstate package doc.
+//
+// pendingAlerts is guarded by its own mutex, separate from entityList's internal locking - same
+// reasoning as PlayersState's alertsMu: written from the Photon-dispatch goroutine
+// (maybeAlertResource), read from internal/overlay's Ebiten goroutine (PendingAlerts).
 type HarvestablesState struct {
 	items        *entityList[int, Harvestable]
 	harvestables *gamedata.HarvestablesDatabase
@@ -71,7 +76,9 @@ type HarvestablesState struct {
 	soundEnabled   func() bool
 
 	lastRangeCheck int64 // unix nano, throttles removeNotInRange like the JS's _lastRangeCheckAt
-	pendingAlerts  []Harvestable
+
+	alertsMu      sync.Mutex
+	pendingAlerts []Harvestable
 }
 
 func NewHarvestablesState(
@@ -124,14 +131,41 @@ func (s *HarvestablesState) maybeAlertResource(h *Harvestable) {
 		return
 	}
 	h.Alerted = true
+	s.alertsMu.Lock()
 	s.pendingAlerts = append(s.pendingAlerts, *h)
+	s.alertsMu.Unlock()
 }
 
 // PendingAlerts drains and returns harvestables that just became sound-alert-worthy.
 func (s *HarvestablesState) PendingAlerts() []Harvestable {
+	s.alertsMu.Lock()
+	defer s.alertsMu.Unlock()
 	out := s.pendingAlerts
 	s.pendingAlerts = nil
 	return out
+}
+
+// ShouldRender reports whether h currently matches the Resources page's tier/enchant filter for
+// its resource type (living vs static) - mirrors web/scripts/drawings/HarvestablesDrawing.js's
+// own filterFn gate (LivingResourceFilter.js's shouldRenderLivingResource/
+// shouldRenderStaticResource). That gate lives in the DRAWING layer in the web app, separate from
+// HarvestablesHandler.js (which only gates the sound alert, see maybeAlertResource above) - a
+// distinction the initial internal/overlay port missed, drawing every tracked harvestable
+// unconditionally. Nothing is shown for a tier/enchant cell nobody has checked on the Resources
+// page, matching that page's own all-unchecked-by-default grid.
+func (s *HarvestablesState) ShouldRender(h Harvestable) bool {
+	if s.getEnchantGrid == nil {
+		return true
+	}
+	keyMap := staticSettingKeyByName
+	if h.isLiving() {
+		keyMap = livingSettingKeyByName
+	}
+	key, ok := keyMap[h.StringType]
+	if !ok {
+		return false
+	}
+	return s.getEnchantGrid(key).cell(h.Charges, h.Tier)
 }
 
 // addHarvestable mirrors addHarvestable: on first sight, creates the entity and checks the

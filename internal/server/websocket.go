@@ -90,22 +90,14 @@ func (ws *WebSocketHandler) flushBatch() {
 		return
 	}
 	batch := ws.batchBuffer
-	msgCount := uint64(len(batch))
 	ws.batchBuffer = make([]interface{}, 0, MaxBatchSize)
 	ws.batchMu.Unlock()
 
-	msg := &WSBatchMessage{Type: "batch", Messages: batch}
-	data, err := json.Marshal(msg)
-	if err != nil {
-		logger.PrintWarn("WS", "batch marshal failed: %v (batch size=%d, DROPPED)", err, msgCount)
-		// Try to identify which message failed by marshaling each one individually.
-		for i, m := range batch {
-			if _, err := json.Marshal(m); err != nil {
-				logger.PrintWarn("WS", "  offending message[%d]: %v (type=%T, value=%+v)", i, err, m, m)
-			}
-		}
+	data, sent := ws.marshalBatch(batch)
+	if sent == 0 {
 		return
 	}
+	msgCount := uint64(sent)
 
 	dataLen := uint64(len(data))
 	var failedClients []*websocket.Conn
@@ -135,6 +127,39 @@ func (ws *WebSocketHandler) flushBatch() {
 		}
 		ws.clientsMu.Unlock()
 	}
+}
+
+// marshalBatch tries the whole batch first (the common, cheap path). Some Photon parameters
+// decode to a raw float32 array (see internal/photon), and a bit pattern that happens to be
+// NaN/Inf is a real, observed occurrence there - Go's encoding/json refuses to serialize either
+// (unlike JS's more permissive JSON.stringify), which fails the whole batch's Marshal call. On
+// that failure, this falls back to marshaling messages individually and keeps everything that
+// DOES marshal successfully, dropping only the actual offender(s) - previously, one bad message
+// out of a batch of (say) 10 meant the other 9 never reached the browser at all.
+func (ws *WebSocketHandler) marshalBatch(batch []interface{}) ([]byte, int) {
+	if data, err := json.Marshal(&WSBatchMessage{Type: "batch", Messages: batch}); err == nil {
+		return data, len(batch)
+	}
+
+	kept := make([]interface{}, 0, len(batch))
+	for i, m := range batch {
+		if _, err := json.Marshal(m); err != nil {
+			logger.PrintWarn("WS", "dropping unmarshalable message[%d]: %v (type=%T)", i, err, m)
+			continue
+		}
+		kept = append(kept, m)
+	}
+	if len(kept) == 0 {
+		logger.PrintWarn("WS", "batch marshal failed, entire batch of %d unmarshalable, DROPPED", len(batch))
+		return nil, 0
+	}
+
+	data, err := json.Marshal(&WSBatchMessage{Type: "batch", Messages: kept})
+	if err != nil {
+		logger.PrintWarn("WS", "batch marshal failed even after filtering: %v, DROPPED", err)
+		return nil, 0
+	}
+	return data, len(kept)
 }
 
 // Stats returns current WebSocket statistics

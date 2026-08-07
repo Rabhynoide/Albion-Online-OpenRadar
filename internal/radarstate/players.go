@@ -1,6 +1,8 @@
 package radarstate
 
 import (
+	"sync"
+
 	"github.com/nospy/albion-openradar/internal/gamedata"
 )
 
@@ -78,6 +80,12 @@ func IsPlayerThreat(faction int, pvpType string) bool {
 // alert-worthy transitions are surfaced via PendingAlerts() for internal/overlay to turn into
 // an actual native sound/flash after applying its own settingFlash/settingSound/exclusion
 // checks (mirrors maybeAlert's exclusion+settings gate, just split across two packages).
+//
+// pendingAlerts is guarded by its own mutex, separate from entityList's internal locking: it's
+// written from whatever goroutine dispatches Photon events (queueAlert, via HandleNewCharacter/
+// HandleFactionChanged) and read from internal/overlay's Ebiten goroutine (PendingAlerts) - a
+// real cross-goroutine access, not a hypothetical one, once anything actually calls
+// PendingAlerts (nothing did until the overlay's alert wiring was added).
 type PlayersState struct {
 	players     *entityList[int, Player]
 	partyRoster *PartyRoster
@@ -86,6 +94,7 @@ type PlayersState struct {
 	currentZone string
 	maxPlayers  int
 
+	alertsMu      sync.Mutex
 	pendingAlerts []string // nicknames that just became a threat, drained by PendingAlerts()
 }
 
@@ -165,11 +174,15 @@ func (s *PlayersState) queueAlert(nickname string) {
 	if s.isExcludedPlayer(nickname) {
 		return
 	}
+	s.alertsMu.Lock()
 	s.pendingAlerts = append(s.pendingAlerts, nickname)
+	s.alertsMu.Unlock()
 }
 
 // PendingAlerts drains and returns the nicknames that became a threat since the last call.
 func (s *PlayersState) PendingAlerts() []string {
+	s.alertsMu.Lock()
+	defer s.alertsMu.Unlock()
 	out := s.pendingAlerts
 	s.pendingAlerts = nil
 	return out

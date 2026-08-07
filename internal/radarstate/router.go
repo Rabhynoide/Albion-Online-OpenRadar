@@ -197,6 +197,18 @@ func (r *Router) handleZoneChangeResponse(p Params, zoneIDKey byte, clearHandler
 		return
 	}
 	r.Session.ChangeZone(newZoneID, r.ZoneGraph)
+	// PlayersState keeps its own copy of the current zone (needed to resolve the zone's PvP
+	// type for hostile-player alerts - see PlayersState.getAlertPvpType), unlike the JS version
+	// this was ported from, which just reads the single global window.currentMapId from
+	// anywhere. Missing this call left it permanently empty: HandleNewCharacter's alert path is
+	// gated on currentZone != "", so it never fired at all, and getAlertPvpType() always fell
+	// back to its "yellow" default, so a Black Zone's "every player is a threat" rule
+	// (IsPlayerThreat's "black" case) could never apply either - reported as "no hostile
+	// detection in BZ", but the same root cause silently disabled new-character alerts
+	// everywhere, not just there.
+	if r.Players != nil {
+		r.Players.SetCurrentZone(newZoneID)
+	}
 	if clearHandlers != nil {
 		clearHandlers()
 	}

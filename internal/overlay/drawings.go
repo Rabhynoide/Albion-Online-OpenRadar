@@ -1,7 +1,9 @@
 package overlay
 
 import (
+	"fmt"
 	"image/color"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -16,6 +18,35 @@ import (
 func drawChest(screen *ebiten.Image, x, y float32) {
 	const size = float32(9)
 	vector.FillRect(screen, x-size/2, y-size/2, size, size, color.RGBA{R: 0xFF, G: 0xD7, B: 0x00, A: 255}, true)
+}
+
+// chestRaritySubstrings mirrors ChestsDrawing.js's own inline rarity detection - each rarity is
+// matched by substring against the chest's (lowercased) name, checked in this exact order (green
+// first, then blue/purple/yellow), gated by its own settingChest{Color} checkbox.
+var chestRaritySubstrings = []struct {
+	setting string
+	subs    []string
+}{
+	{"settingChestGreen", []string{"standard", "green"}},
+	{"settingChestBlue", []string{"uncommon", "blue"}},
+	{"settingChestPurple", []string{"rare", "purple"}},
+	{"settingChestYellow", []string{"legendary", "yellow"}},
+}
+
+// shouldRenderChest is a draw-time port of ChestsDrawing.js's invalidate() rarity gate.
+func shouldRenderChest(c radarstate.Chest, isOn func(string) bool) bool {
+	name := strings.ToLower(c.Name)
+	for _, rarity := range chestRaritySubstrings {
+		if !isOn(rarity.setting) {
+			continue
+		}
+		for _, sub := range rarity.subs {
+			if strings.Contains(name, sub) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // dungeonColors mirrors DungeonsHandler.js's setDrawNameByType intent (a distinct marker per
@@ -37,6 +68,33 @@ func drawDungeon(screen *ebiten.Image, x, y float32, d radarstate.Dungeon) {
 	vector.StrokeCircle(screen, x, y, 8, 2, c, true)
 }
 
+// shouldRenderDungeon is a draw-time port of DungeonsHandler.js's addDungeon type/enchant gate -
+// the JS applies this at ingestion time (an entry matching a disabled filter is never even
+// added); the Go port always tracks every dungeon and filters here instead, so toggling a filter
+// takes immediate effect on already-tracked entries too (see radarstate.Dungeon's own doc
+// comment for why that's a deliberate improvement, not just a port). Mist portal dungeon types
+// route through the Mists settings (settingMistSolo/Duo + settingMistE0-4), not the Dungeon
+// settings, matching the JS's own routing.
+func shouldRenderDungeon(d radarstate.Dungeon, isOn func(string) bool) bool {
+	enchantKey := func(prefix string) string { return fmt.Sprintf("%sE%d", prefix, d.Enchant) }
+	switch d.Type {
+	case radarstate.DungeonSolo:
+		return isOn("settingDungeonSolo") && isOn(enchantKey("settingDungeon"))
+	case radarstate.DungeonGroup:
+		return isOn("settingDungeonDuo") && isOn(enchantKey("settingDungeon"))
+	case radarstate.DungeonCorrupted:
+		return isOn("settingDungeonCorrupted")
+	case radarstate.DungeonHellgate:
+		return isOn("settingDungeonHellgate")
+	case radarstate.DungeonMistSolo:
+		return isOn("settingMistSolo") && isOn(enchantKey("settingMist"))
+	case radarstate.DungeonMistGroup:
+		return isOn("settingMistDuo") && isOn(enchantKey("settingMist"))
+	default:
+		return false
+	}
+}
+
 func drawFish(screen *ebiten.Image, x, y float32) {
 	vector.FillCircle(screen, x, y, 5, color.RGBA{R: 90, G: 190, B: 230, A: 255}, true)
 }
@@ -53,4 +111,27 @@ func drawMistsDungeonPortal(screen *ebiten.Image, x, y float32) {
 
 func drawWispCage(screen *ebiten.Image, x, y float32) {
 	vector.FillCircle(screen, x, y, 6, color.RGBA{R: 210, G: 210, B: 60, A: 255}, true)
+}
+
+// drawMistWisp is the pre-portal "wisp sign" marker (MistsWispDrawing.js) - distinct from
+// drawWispCage (a spawned, already-opened wisp cage): a smaller, dimmer marker since it's just an
+// early warning that a portal may open nearby.
+func drawMistWisp(screen *ebiten.Image, x, y float32) {
+	vector.FillCircle(screen, x, y, 4, color.RGBA{R: 170, G: 140, B: 230, A: 220}, true)
+}
+
+// shouldRenderMist is a draw-time port of MistsWispDrawing.js's invalidate() gate: a master
+// settingWispSpawn toggle, then the same enchant + solo/duo-type gate the Dungeons Mist types
+// share (settingMistE0-4, settingMistSolo/Duo) - m.IsSolo is MobsHandler.js's `type == 0`.
+func shouldRenderMist(m radarstate.Mist, isOn func(string) bool) bool {
+	if !isOn("settingWispSpawn") {
+		return false
+	}
+	if !isOn(fmt.Sprintf("settingMistE%d", m.Enchant)) {
+		return false
+	}
+	if m.IsSolo {
+		return isOn("settingMistSolo")
+	}
+	return isOn("settingMistDuo")
 }

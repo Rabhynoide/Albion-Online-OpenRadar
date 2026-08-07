@@ -147,6 +147,29 @@
   mobs, chests, dungeons, fishing, local treasures, MistsDungeon portals, WispCages), the local
   player, and the zone map background. Resource clustering and health bars are intentionally
   out of scope (confirmed not needed), unlike the web radar's own `DrawingUtils.js`.
+- **SETTINGS-1**: native, browser-free configuration client (`cmd/radar-settings`, Fyne) covering
+  Players/Resources/Enemies/Chests/Ignore List/Settings - the rest of the web app OVERLAY-1 left
+  untouched. A "Lancer l'overlay" button in its header spawns the sibling `cmd/radar -overlay
+  -no-server` binary for the map view. **Real, load-bearing finding**: Ebiten (`internal/overlay`)
+  and Fyne cannot both be *linked* into one Windows binary - not just "not run together", a bare
+  `import _ "ebiten"` alone breaks Fyne's window-class registration (`RegisterClassEx` collision)
+  even if the import is never used - so `cmd/radar-settings` is a genuinely separate binary/
+  process from `cmd/radar`, never importing `internal/overlay`. Shared bootstrap (capture +
+  HTTP/WS server) extracted into a new UI-toolkit-agnostic `internal/radarapp` package both
+  binaries import; `cmd/radar`'s own `App` now embeds `*radarapp.App` and layers TUI/overlay-
+  specific wiring on top via `OnEvent`/`OnRequest`/`OnResponse` hooks. See
+  `docs/technical/NATIVE_SETTINGS_CLIENT.md`. Also fixed along the way (found via manual
+  overlay testing during this phase, not part of the original scope): the Resources page's
+  tier/enchant grid was never actually filtering what the overlay drew - `HarvestablesState`
+  only used the grid for the sound-alert gate (correctly mirroring `HarvestablesHandler.js`),
+  never for the separate visual gate `HarvestablesDrawing.js` applies in the web app
+  (`LivingResourceFilter.js`) - new `HarvestablesState.ShouldRender` closes that gap. The overlay
+  window also gained click-drag-to-move and corner-drag-to-resize (kept square; zoom rescales
+  with window size so the same detection range stays visible at any size), both persisted to
+  `overlay-window.json`, plus user-adjustable `settingOverlayZoom`/`settingOverlayMapOpacity` on
+  the Settings page. Web page removal (Radar/Players/Resources/Enemies/Chests/Ignore List/
+  Settings, Market stays web-only) is still pending, done once each native page is manually
+  validated - see `docs/technical/NATIVE_SETTINGS_CLIENT.md`'s status section for what's left.
 
 ## Closed in v2.2
 

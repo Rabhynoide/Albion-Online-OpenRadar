@@ -153,6 +153,51 @@ func TestHarvestablesState_NoAlertWhenSoundDisabled(t *testing.T) {
 	}
 }
 
+// @verified: mirrors HarvestablesDrawing.js's own filterFn gate (LivingResourceFilter.js) - the
+// SEPARATE visual filter from maybeAlertResource's sound-alert gate above, both driven by the
+// same Resources-page enchant grid.
+func TestHarvestablesState_ShouldRender_FullGridShowsEverything(t *testing.T) {
+	s := NewHarvestablesState(testHarvestablesDB(t), testMobsDB(t), func(string) EnchantGrid { return fullEnchantGrid() }, func() bool { return false })
+	s.HandleNewHarvestableObject(1, Params{5: int32(3), 6: int32(65535), 7: int32(4), 8: []float32{0, 0}})
+
+	h := s.Snapshot()[0]
+	if !s.ShouldRender(h) {
+		t.Error("ShouldRender should be true when the grid has every cell checked")
+	}
+}
+
+func TestHarvestablesState_ShouldRender_EmptyGridHidesEverything(t *testing.T) {
+	s := NewHarvestablesState(testHarvestablesDB(t), testMobsDB(t), func(string) EnchantGrid { return nil }, func() bool { return false })
+	s.HandleNewHarvestableObject(1, Params{5: int32(3), 6: int32(65535), 7: int32(4), 8: []float32{0, 0}})
+
+	h := s.Snapshot()[0]
+	if s.ShouldRender(h) {
+		t.Error("ShouldRender should be false when nothing is checked on the Resources page (the default)")
+	}
+}
+
+func TestHarvestablesState_ShouldRender_UsesLivingGridForLivingResources(t *testing.T) {
+	mobsDB := testMobsDB(t)
+	livingID, ok := mobsDB.GetIDByName("CRITTER_HIDE")
+	if !ok {
+		t.Fatal("fixture mob not found")
+	}
+	var requestedKey string
+	s := NewHarvestablesState(testHarvestablesDB(t), mobsDB, func(key string) EnchantGrid {
+		requestedKey = key
+		return fullEnchantGrid()
+	}, func() bool { return false })
+	s.HandleNewHarvestableObject(1, Params{5: int32(99), 6: int32(livingID), 7: int32(4), 8: []float32{0, 0}})
+
+	h := s.Snapshot()[0]
+	if !s.ShouldRender(h) {
+		t.Error("ShouldRender should be true with a full living grid")
+	}
+	if requestedKey != "settingLivingHideEnchants" {
+		t.Errorf("requested key = %q, want settingLivingHideEnchants (living, not static)", requestedKey)
+	}
+}
+
 // baseUnixNano stands in for a realistic time.Now().UnixNano() - always far more than 250ms
 // past the zero Duration, unlike 0 itself, which would collide with lastRangeCheck's
 // zero-value and make the very first RemoveNotInRange call look throttled.
