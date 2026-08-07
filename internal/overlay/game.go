@@ -19,19 +19,26 @@ const (
 	defaultWindow = 500
 )
 
-// Game implements ebiten.Game - the native radar window. A first functional pass: renders the
-// local player (fixed screen-center dot, matching the web radar's own "world moves, player
-// doesn't" convention), harvestables, and mobs with distinct colors per category. Chests/
-// Dungeons/Fishing/LocalTreasures/Mists/WispCages/cluster rings/health bars are follow-up work
-// once this core loop is visually validated - see docs/technical/NATIVE_OVERLAY_CLIENT.md.
+// Game implements ebiten.Game - the native radar window. Renders the local player (fixed
+// screen-center dot, matching the web radar's own "world moves, player doesn't" convention),
+// the zone map background, and every tracked entity type with a distinct color/shape per
+// category - a functional pass, not a pixel-perfect port of DrawingUtils.js's canvas
+// gradients/badges/pulsing rings (see docs/technical/NATIVE_OVERLAY_CLIENT.md). Resource
+// clustering and health bars are deliberately out of scope for this client (not needed).
 type Game struct {
 	state     *State
 	settings  *settingsPanel
 	mapImages *mapImageCache
 
-	harvestablePos map[int]*EntityPos
-	mobPos         map[int]*EntityPos
-	mapHX, mapHY   float64
+	harvestablePos   *posTracker
+	mobPos           *posTracker
+	chestPos         *posTracker
+	dungeonPos       *posTracker
+	fishPos          *posTracker
+	localTreasurePos *posTracker
+	mistsDungeonPos  *posTracker
+	wispCagePos      *posTracker
+	mapHX, mapHY     float64
 
 	width, height int
 	lastFrame     time.Time
@@ -42,14 +49,20 @@ type Game struct {
 
 func NewGame(state *State, appDir string) *Game {
 	return &Game{
-		state:          state,
-		settings:       newSettingsPanel(appDir),
-		mapImages:      newMapImageCache(appDir),
-		harvestablePos: make(map[int]*EntityPos),
-		mobPos:         make(map[int]*EntityPos),
-		width:          defaultWindow,
-		height:         defaultWindow,
-		lastFrame:      time.Now(),
+		state:            state,
+		settings:         newSettingsPanel(appDir),
+		mapImages:        newMapImageCache(appDir),
+		harvestablePos:   newPosTracker(),
+		mobPos:           newPosTracker(),
+		chestPos:         newPosTracker(),
+		dungeonPos:       newPosTracker(),
+		fishPos:          newPosTracker(),
+		localTreasurePos: newPosTracker(),
+		mistsDungeonPos:  newPosTracker(),
+		wispCagePos:      newPosTracker(),
+		width:            defaultWindow,
+		height:           defaultWindow,
+		lastFrame:        time.Now(),
 	}
 }
 
@@ -109,75 +122,169 @@ func (g *Game) updateInterpolation(dt time.Duration) {
 	MapInterpolate(&g.mapHX, &g.mapHY, lpX, lpY, t)
 
 	if g.state.Harvestables != nil {
-		live := make(map[int]struct{})
-		for _, h := range g.state.Harvestables.Snapshot() {
-			live[h.ID] = struct{}{}
-			e := g.harvestablePos[h.ID]
-			if e == nil {
-				e = &EntityPos{}
-				g.harvestablePos[h.ID] = e
-			}
-			e.PosX, e.PosY = float64(h.PosX), float64(h.PosY)
-			InterpolateEntity(e, lpX, lpY, t)
+		snap := g.state.Harvestables.Snapshot()
+		entries := make([]idPos, len(snap))
+		for i, h := range snap {
+			entries[i] = idPos{id: h.ID, x: h.PosX, y: h.PosY}
 		}
-		pruneMissing(g.harvestablePos, live)
+		g.harvestablePos.sync(entries, lpX, lpY, t)
 	}
 
 	if g.state.Mobs != nil {
-		live := make(map[int]struct{})
-		for _, m := range g.state.Mobs.MobSnapshot() {
-			live[m.ID] = struct{}{}
-			e := g.mobPos[m.ID]
-			if e == nil {
-				e = &EntityPos{}
-				g.mobPos[m.ID] = e
-			}
-			e.PosX, e.PosY = float64(m.PosX), float64(m.PosY)
-			InterpolateEntity(e, lpX, lpY, t)
+		snap := g.state.Mobs.MobSnapshot()
+		entries := make([]idPos, len(snap))
+		for i, m := range snap {
+			entries[i] = idPos{id: m.ID, x: m.PosX, y: m.PosY}
 		}
-		pruneMissing(g.mobPos, live)
+		g.mobPos.sync(entries, lpX, lpY, t)
+	}
+
+	if g.state.Chests != nil {
+		snap := g.state.Chests.Snapshot()
+		entries := make([]idPos, len(snap))
+		for i, c := range snap {
+			entries[i] = idPos{id: c.ID, x: c.PosX, y: c.PosY}
+		}
+		g.chestPos.sync(entries, lpX, lpY, t)
+	}
+
+	if g.state.Dungeons != nil {
+		snap := g.state.Dungeons.Snapshot()
+		entries := make([]idPos, len(snap))
+		for i, d := range snap {
+			entries[i] = idPos{id: d.ID, x: d.PosX, y: d.PosY}
+		}
+		g.dungeonPos.sync(entries, lpX, lpY, t)
+	}
+
+	if g.state.Fishing != nil {
+		snap := g.state.Fishing.Snapshot()
+		entries := make([]idPos, len(snap))
+		for i, f := range snap {
+			entries[i] = idPos{id: f.ID, x: f.PosX, y: f.PosY}
+		}
+		g.fishPos.sync(entries, lpX, lpY, t)
+	}
+
+	if g.state.LocalTreasures != nil {
+		snap := g.state.LocalTreasures.Snapshot()
+		entries := make([]idPos, len(snap))
+		for i, lt := range snap {
+			entries[i] = idPos{id: lt.ID, x: lt.PosX, y: lt.PosY}
+		}
+		g.localTreasurePos.sync(entries, lpX, lpY, t)
+	}
+
+	if g.state.MistsDungeon != nil {
+		snap := g.state.MistsDungeon.Snapshot()
+		entries := make([]idPos, len(snap))
+		for i, m := range snap {
+			entries[i] = idPos{id: m.ID, x: m.PosX, y: m.PosY}
+		}
+		g.mistsDungeonPos.sync(entries, lpX, lpY, t)
+	}
+
+	if g.state.WispCage != nil {
+		snap := g.state.WispCage.Snapshot()
+		entries := make([]idPos, len(snap))
+		for i, w := range snap {
+			entries[i] = idPos{id: w.ID, x: w.PosX, y: w.PosY}
+		}
+		g.wispCagePos.sync(entries, lpX, lpY, t)
 	}
 }
 
-func pruneMissing(m map[int]*EntityPos, live map[int]struct{}) {
-	for id := range m {
-		if _, ok := live[id]; !ok {
-			delete(m, id)
-		}
+// screenPos resolves an already-interpolated entity to its current screen position, or
+// ok=false if it isn't tracked yet (e.g. the very first frame after it spawned, before Update
+// has run once).
+func (g *Game) screenPos(tracker *posTracker, id int, zoom, center float64) (sx, sy float32, ok bool) { //nolint:unparam // zoom is currently always called with 1.0 (no zoom control wired up yet, see Draw's TODO) but is a real, already-varying parameter of TransformPoint - keeping it threaded through avoids re-plumbing 8 call sites once zoom exists
+	e := tracker.get(id)
+	if e == nil {
+		return 0, 0, false
 	}
+	x, y := TransformPoint(e.HX, e.HY, zoom, center)
+	return float32(x), float32(y), true
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Clear() // fully transparent - SetScreenTransparent handles per-pixel alpha compositing
 
 	center := float32(g.width) / 2
+	centerF := float64(center)
 	zoom := 1.0 // TODO: wire to the settings panel's zoom control once it exists
 
-	g.drawMapBackground(screen, zoom, float64(center))
+	g.drawMapBackground(screen, zoom, centerF)
 
-	if g.state != nil && g.state.Harvestables != nil {
+	if g.state == nil {
+		g.drawHUD(screen)
+		return
+	}
+
+	if g.state.Harvestables != nil {
 		for _, h := range g.state.Harvestables.Snapshot() {
-			e := g.harvestablePos[h.ID]
-			if e == nil {
-				continue
+			if sx, sy, ok := g.screenPos(g.harvestablePos, h.ID, zoom, centerF); ok {
+				drawHarvestable(screen, sx, sy, h)
 			}
-			sx, sy := TransformPoint(e.HX, e.HY, zoom, float64(center))
-			drawHarvestable(screen, float32(sx), float32(sy), h)
 		}
 	}
 
-	if g.state != nil && g.state.Mobs != nil {
+	if g.state.Chests != nil {
+		for _, c := range g.state.Chests.Snapshot() {
+			if sx, sy, ok := g.screenPos(g.chestPos, c.ID, zoom, centerF); ok {
+				drawChest(screen, sx, sy)
+			}
+		}
+	}
+
+	if g.state.Dungeons != nil {
+		for _, d := range g.state.Dungeons.Snapshot() {
+			if sx, sy, ok := g.screenPos(g.dungeonPos, d.ID, zoom, centerF); ok {
+				drawDungeon(screen, sx, sy, d)
+			}
+		}
+	}
+
+	if g.state.Fishing != nil {
+		for _, f := range g.state.Fishing.Snapshot() {
+			if sx, sy, ok := g.screenPos(g.fishPos, f.ID, zoom, centerF); ok {
+				drawFish(screen, sx, sy)
+			}
+		}
+	}
+
+	if g.state.LocalTreasures != nil {
+		for _, lt := range g.state.LocalTreasures.Snapshot() {
+			if sx, sy, ok := g.screenPos(g.localTreasurePos, lt.ID, zoom, centerF); ok {
+				drawLocalTreasure(screen, sx, sy)
+			}
+		}
+	}
+
+	if g.state.MistsDungeon != nil {
+		for _, m := range g.state.MistsDungeon.Snapshot() {
+			if sx, sy, ok := g.screenPos(g.mistsDungeonPos, m.ID, zoom, centerF); ok {
+				drawMistsDungeonPortal(screen, sx, sy)
+			}
+		}
+	}
+
+	if g.state.WispCage != nil {
+		for _, w := range g.state.WispCage.Snapshot() {
+			if sx, sy, ok := g.screenPos(g.wispCagePos, w.ID, zoom, centerF); ok {
+				drawWispCage(screen, sx, sy)
+			}
+		}
+	}
+
+	if g.state.Mobs != nil {
 		for _, m := range g.state.Mobs.MobSnapshot() {
 			if settingID := radarstate.SettingNameForEnemyType(m.Type); settingID != "" && !g.settings.isOn(settingID) {
-				continue // e.g. F4-toggled off "settingMiniBossEnemy" - living resources have no
-				// dedicated setting (SettingNameForEnemyType returns "" for them) and always draw.
+				continue // e.g. a mob type hidden via the web Enemies page - living resources have
+				// no dedicated setting (SettingNameForEnemyType returns "") and always draw.
 			}
-			e := g.mobPos[m.ID]
-			if e == nil {
-				continue
+			if sx, sy, ok := g.screenPos(g.mobPos, m.ID, zoom, centerF); ok {
+				drawMob(screen, sx, sy, m)
 			}
-			sx, sy := TransformPoint(e.HX, e.HY, zoom, float64(center))
-			drawMob(screen, float32(sx), float32(sy), m)
 		}
 	}
 

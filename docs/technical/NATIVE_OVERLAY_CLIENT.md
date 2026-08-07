@@ -108,16 +108,19 @@ window focus - a `syscall.NewLazyDLL` call, no prior precedent for direct Win32 
 repo. Windows-only for now (`clickthrough_other.go` is a no-op stub so the package still builds
 on Linux).
 
-**Rendering** (`game.go`, `geometry.go`): a first functional pass, not a pixel-perfect port of
-`DrawingUtils.js`'s canvas gradients/rounded-rect badges/pulsing cluster rings - those are
-genuine UI polish that needs iterating on visually (which this environment can't do blind) rather
-than blind-porting. Currently drawn: harvestables (colored squares by resource type), mobs
-(colored circles by `EnemyType`), the local player (fixed screen-center dot, matching
-`CanvasManager.js`'s own "world moves, player doesn't" convention), and the zone map background.
-**Not yet drawn** despite the state already being tracked in `internal/radarstate`: Chests,
-Dungeons, Fishing, LocalTreasures, MistsDungeon portals, WispCages, resource clustering
-(`DetectClusters` is ported and tested in `geometry.go` but nothing calls it from `Draw()` yet),
-health bars, distance indicators.
+**Rendering** (`game.go`, `drawings.go`, `geometry.go`): flat colors/shapes per entity type
+rather than a pixel-perfect port of `DrawingUtils.js`'s canvas gradients/rounded-rect badges -
+that's UI polish this environment can't iterate on blind, so it was skipped rather than guessed
+at. Every tracked `internal/radarstate` entity type is drawn: harvestables (colored squares by
+resource type), mobs (colored circles by `EnemyType`), chests, dungeons (ringed by
+`DungeonType`), fishing, local treasures, MistsDungeon portals, WispCages, and the local player
+(fixed screen-center dot, matching `CanvasManager.js`'s own "world moves, player doesn't"
+convention). **Deliberately out of scope, not a gap**: resource clustering and health bars -
+confirmed not needed for this client (`DrawingUtils.js`'s `detectClusters`/`drawHealthBar` were
+never ported at all, not merely left unwired). Distance indicators remain a possible follow-up
+if ever wanted; `CalculateDistance`/`MetersToGameUnits`/`ConvertGameUnitsToMeters` in
+`geometry.go` are kept as general-purpose primitives (not clustering-specific) in case they're
+useful for that later.
 
 **Map background** (`mapbackground.go`): the one part of `DrawingUtils.js`/`MapsDrawing.js` that
 needed porting despite the "skip pixel-perfect polish" rule, since without it the radar has no
@@ -149,8 +152,9 @@ configuration is a one-way read from whatever the web app last wrote.
 ## Known limitations
 
 - Click-through toggle (F9) is Windows-only.
-- Only harvestables and mobs are drawn on the map today - see the "not yet drawn" list above.
 - Mist-portal-chain PvP inheritance isn't tracked (see `Session`'s doc comment).
 - No zoom/pan controls in the overlay window yet (`Draw()`'s `zoom` is hardcoded to `1.0`).
-- The settings panel only *reads* pre-existing setting keys; there's no way to discover or set a
-  brand-new setting from inside the overlay - by design, the web app remains the only editor.
+- The overlay only *reads* `settings-sync.json`; there's no way to set a setting from inside the
+  overlay itself - by design, the web app remains the only editor (see "What this is (and
+  isn't)" above).
+- Resource clustering and health bars are intentionally not implemented (confirmed not needed).

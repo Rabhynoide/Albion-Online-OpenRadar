@@ -1,12 +1,12 @@
 // Package overlay is the native Ebiten radar window (internal/radarstate feeds it, no browser
 // involved) - a Go port of the rendering/interaction logic in web/scripts/utils/RadarRenderer.js
 // and DrawingUtils.js. This file ports DrawingUtils.js's pure math (screen transform,
-// interpolation, clustering, unit conversion) - the parts that are meaningfully unit-testable
-// without a graphics API. The actual Ebiten Draw() implementation (internal/overlay/game.go)
-// is a first functional pass (distinct shapes/colors per entity type) rather than a
-// pixel-perfect port of DrawingUtils.js's canvas gradients/rounded-rect badges/pulsing rings -
-// those are real UI polish worth iterating on visually once there's something to look at,
-// not blind-portable the way domain logic is.
+// interpolation, unit conversion) - the parts that are meaningfully unit-testable without a
+// graphics API. The actual Ebiten Draw() implementation (internal/overlay/game.go) is a
+// functional pass (distinct shapes/colors per entity type) rather than a pixel-perfect port of
+// DrawingUtils.js's canvas gradients/rounded-rect badges - that's UI polish, not ported.
+// Resource clustering and health bars are deliberately out of scope (not needed for this
+// client), unlike the web radar's own DrawingUtils.js/detectClusters.
 package overlay
 
 import "math"
@@ -98,92 +98,4 @@ func MetersToGameUnits(meters float64) float64 {
 		return 0
 	}
 	return math.Ceil(meters / scaleFactor * 3)
-}
-
-// CalculateRealResources mirrors calculateRealResources: lower tiers pack more real harvests
-// per visible charge/stack than higher tiers do.
-func CalculateRealResources(size, tier int) int {
-	switch {
-	case tier <= 3:
-		return size * 3
-	case tier == 4:
-		return size * 2
-	default:
-		return size
-	}
-}
-
-// Cluster mirrors DrawingUtils.js's detectClusters output shape.
-type Cluster struct {
-	X, Y      float64
-	Count     int
-	Type      string
-	Tier      int
-	Resources []ClusterMember
-}
-
-// ClusterMember is the minimal per-entity shape DetectClusters needs from a caller's resource
-// list (radarstate.Harvestable, typically, but kept decoupled from that package the same way
-// EntityPos is).
-type ClusterMember struct {
-	HX, HY  float64
-	Type    string // resolved category name (Fiber/Hide/Wood/Ore/Rock/Resource)
-	Tier    int
-	HasTier bool
-	Size    int
-	HasSize bool
-}
-
-// DetectClusters mirrors detectClusters: greedily groups same-type, same-tier resources within
-// clusterRadius meters of each other, dropping already-depleted (Size<=0) entries and any
-// group smaller than minClusterSize.
-func DetectClusters(resources []ClusterMember, clusterRadiusMeters float64, minClusterSize int) []Cluster {
-	if len(resources) == 0 {
-		return nil
-	}
-	gameUnitsRadius := MetersToGameUnits(clusterRadiusMeters)
-
-	var clusters []Cluster
-	processed := make([]bool, len(resources))
-
-	for i := range resources {
-		if processed[i] {
-			continue
-		}
-		r := resources[i]
-		if r.HasSize && r.Size <= 0 {
-			continue
-		}
-
-		cluster := Cluster{X: r.HX, Y: r.HY, Count: 1, Type: r.Type, Tier: r.Tier, Resources: []ClusterMember{r}}
-
-		for j := i + 1; j < len(resources); j++ {
-			if processed[j] {
-				continue
-			}
-			other := resources[j]
-			if other.HasSize && other.Size <= 0 {
-				continue
-			}
-			if other.Type != r.Type {
-				continue
-			}
-			if r.HasTier && other.HasTier && other.Tier != r.Tier {
-				continue
-			}
-			if CalculateDistance(r.HX, r.HY, other.HX, other.HY) <= gameUnitsRadius {
-				cluster.Count++
-				cluster.Resources = append(cluster.Resources, other)
-				cluster.X = (cluster.X*float64(cluster.Count-1) + other.HX) / float64(cluster.Count)
-				cluster.Y = (cluster.Y*float64(cluster.Count-1) + other.HY) / float64(cluster.Count)
-				processed[j] = true
-			}
-		}
-
-		processed[i] = true
-		if cluster.Count >= minClusterSize {
-			clusters = append(clusters, cluster)
-		}
-	}
-	return clusters
 }

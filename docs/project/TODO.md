@@ -143,9 +143,10 @@
   writes to it. New `internal/gamedata` (Go port of the JS `*Database.js` loaders) and
   `internal/radarstate` (Go port of every `web/scripts/handlers/*.js` handler plus a `Router`
   mirroring `EventRouter.js`'s dispatch - caught a real bug in the process, see
-  `docs/technical/NATIVE_OVERLAY_CLIENT.md`). Renders harvestables, mobs, the local player, and
-  the zone map background; Chests/Dungeons/Fishing/LocalTreasures/Mists/WispCages/clustering/
-  health bars are tracked in `internal/radarstate` already but not yet drawn.
+  `docs/technical/NATIVE_OVERLAY_CLIENT.md`). Renders every tracked entity type (harvestables,
+  mobs, chests, dungeons, fishing, local treasures, MistsDungeon portals, WispCages), the local
+  player, and the zone map background. Resource clustering and health bars are intentionally
+  out of scope (confirmed not needed), unlike the web radar's own `DrawingUtils.js`.
 
 ## Closed in v2.2
 
