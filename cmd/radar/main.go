@@ -17,7 +17,9 @@ import (
 	assets "github.com/nospy/albion-openradar"
 	"github.com/nospy/albion-openradar/internal/capture"
 	"github.com/nospy/albion-openradar/internal/logger"
+	"github.com/nospy/albion-openradar/internal/overlay"
 	"github.com/nospy/albion-openradar/internal/photon"
+	"github.com/nospy/albion-openradar/internal/radarstate"
 	"github.com/nospy/albion-openradar/internal/server"
 	"github.com/nospy/albion-openradar/internal/ui"
 	"github.com/nospy/albion-openradar/internal/updatecheck"
@@ -49,6 +51,8 @@ type App struct {
 	captureManager *capture.Manager
 	photonParser   *photon.PhotonParser
 	program        *tea.Program
+	radarRouter    *radarstate.Router // non-nil only in -overlay mode, see newApp
+	overlayState   *overlay.State     // non-nil only in -overlay mode, see newApp
 
 	// Packet statistics (atomic for thread safety)
 	packetsProcessed uint64
@@ -131,14 +135,31 @@ func runApp(cfg Config) bool {
 		}
 	}
 
+	// Track if restart was requested
+	restartRequested := false
+
+	if cfg.overlay {
+		// No TUI in this mode - app.program stays nil, startCaptureStatePoll (which only
+		// exists to feed the TUI) is skipped, and logger.Print*/PrintWarn/etc keep writing
+		// straight to the console that launched the process, same as before any dashboard
+		// existed. The native window is a separate OS window entirely.
+		app.startUpdateCheck(appDir)
+		go app.startServers()
+		go app.updateStats()
+
+		if err := overlay.Run(app.overlayState, appDir); err != nil {
+			fmt.Printf("Overlay error: %v\n", err)
+		}
+
+		app.shutdown()
+		return restartRequested
+	}
+
 	dashboard := ui.NewDashboard(Version, serverPort, cfg.devMode, capture.LANAddresses(), nil)
 	app.program = tea.NewProgram(dashboard, tea.WithAltScreen())
 
 	app.startCaptureStatePoll()
 	app.startUpdateCheck(appDir)
-
-	// Track if restart was requested
-	restartRequested := false
 
 	// Set up log callback to send logs to dashboard
 	logger.SetLogCallback(func(level, tag, message string) {
@@ -179,6 +200,7 @@ type Config struct {
 	devMode     bool
 	showVersion bool
 	ipAddr      string
+	overlay     bool
 }
 
 func parseFlags() Config {
@@ -186,6 +208,7 @@ func parseFlags() Config {
 	flag.BoolVar(&cfg.devMode, "dev", false, "Run in development mode (read files from disk)")
 	flag.BoolVar(&cfg.showVersion, "version", false, "Show version information")
 	flag.StringVar(&cfg.ipAddr, "ip", "", "Network adapter IP address (skip interactive prompt)")
+	flag.BoolVar(&cfg.overlay, "overlay", false, "Run the native click-through radar overlay instead of the TUI dashboard")
 	flag.Parse()
 	return cfg
 }
@@ -225,6 +248,16 @@ func newApp(
 		httpServer:     httpServer,
 		captureManager: manager,
 	}
+
+	if cfg.overlay {
+		state, router, err := buildOverlayState(appDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build overlay state: %w", err)
+		}
+		app.overlayState = state
+		app.radarRouter = router
+	}
+
 	app.photonParser = photon.NewPhotonParser(
 		app.onPhotonEvent,
 		app.onPhotonRequest,
@@ -373,16 +406,25 @@ func (app *App) onPhotonEvent(event *photon.EventData) {
 		}, nil)
 	}
 	app.wsHandler.BroadcastEvent(event)
+	if app.radarRouter != nil {
+		app.radarRouter.HandleEvent(event)
+	}
 }
 
 func (app *App) onPhotonRequest(req *photon.OperationRequest) {
 	photon.PostProcessRequest(req)
 	app.wsHandler.BroadcastRequest(req)
+	if app.radarRouter != nil {
+		app.radarRouter.HandleRequest(req)
+	}
 }
 
 func (app *App) onPhotonResponse(resp *photon.OperationResponse) {
 	photon.PostProcessResponse(resp)
 	app.wsHandler.BroadcastResponse(resp)
+	if app.radarRouter != nil {
+		app.radarRouter.HandleResponse(resp, app.radarRouter.ClearAll)
+	}
 }
 
 func (app *App) onPhotonEncrypted() {

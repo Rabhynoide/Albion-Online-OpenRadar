@@ -1,0 +1,160 @@
+package overlay
+
+import (
+	"math"
+	"testing"
+)
+
+func almostEqual(a, b float64) bool { return math.Abs(a-b) < 1e-6 }
+
+func TestBearingToCompassLabel(t *testing.T) {
+	tests := []struct {
+		bearing float64
+		want    string
+	}{
+		{0, "N"}, {45, "N-E"}, {90, "E"}, {135, "S-E"}, {180, "S"}, {225, "S-O"}, {270, "O"}, {315, "N-O"},
+		{360, "N"}, {5, "N"}, {40, "N-E"},
+	}
+	for _, tt := range tests {
+		if got := BearingToCompassLabel(tt.bearing); got != tt.want {
+			t.Errorf("BearingToCompassLabel(%v) = %q, want %q", tt.bearing, got, tt.want)
+		}
+	}
+}
+
+func TestLerp(t *testing.T) {
+	if got := Lerp(0, 10, 0.5); got != 5 {
+		t.Errorf("Lerp(0,10,0.5) = %v, want 5", got)
+	}
+	if got := Lerp(0, 10, 0); got != 0 {
+		t.Errorf("Lerp(0,10,0) = %v, want 0", got)
+	}
+	if got := Lerp(0, 10, 1); got != 10 {
+		t.Errorf("Lerp(0,10,1) = %v, want 10", got)
+	}
+}
+
+func TestInterpolateEntity_FirstObservationJumpsToTarget(t *testing.T) {
+	e := &EntityPos{PosX: 100, PosY: 50}
+	InterpolateEntity(e, 0, 0, 0.1) // t doesn't matter on the very first call
+
+	wantHX, wantHY := -1*100.0+0, 50.0-0
+	if !almostEqual(e.HX, wantHX) || !almostEqual(e.HY, wantHY) {
+		t.Errorf("first InterpolateEntity: HX=%v HY=%v, want HX=%v HY=%v (snap to target, no lerp from origin)", e.HX, e.HY, wantHX, wantHY)
+	}
+}
+
+func TestInterpolateEntity_SubsequentCallsLerp(t *testing.T) {
+	e := &EntityPos{PosX: 10, PosY: 10}
+	InterpolateEntity(e, 0, 0, 1)       // first call snaps to the target: (-10, 10)
+	InterpolateEntity(e, 100, 100, 0.5) // second call lerps halfway toward the new target
+
+	// new target: hX = -10+100 = 90, hY = 10-100 = -90; halfway from (-10,10) to (90,-90) = (40,-40)
+	if !almostEqual(e.HX, 40) || !almostEqual(e.HY, -40) {
+		t.Errorf("HX=%v HY=%v, want HX=40 HY=-40", e.HX, e.HY)
+	}
+}
+
+func TestCalculateDistance(t *testing.T) {
+	if got := CalculateDistance(0, 0, 3, 4); got != 5 {
+		t.Errorf("CalculateDistance = %v, want 5 (3-4-5 triangle)", got)
+	}
+}
+
+func TestConvertGameUnitsToMeters(t *testing.T) {
+	if got := ConvertGameUnitsToMeters(30); got != 10 {
+		t.Errorf("ConvertGameUnitsToMeters(30) = %d, want 10", got)
+	}
+}
+
+func TestMetersToGameUnits(t *testing.T) {
+	if got := MetersToGameUnits(10); got != 30 {
+		t.Errorf("MetersToGameUnits(10) = %v, want 30", got)
+	}
+	if got := MetersToGameUnits(0); got != 0 {
+		t.Errorf("MetersToGameUnits(0) = %v, want 0", got)
+	}
+	if got := MetersToGameUnits(-5); got != 0 {
+		t.Errorf("MetersToGameUnits(-5) = %v, want 0", got)
+	}
+}
+
+func TestCalculateRealResources(t *testing.T) {
+	tests := []struct {
+		size, tier, want int
+	}{
+		{10, 1, 30}, {10, 3, 30}, {10, 4, 20}, {10, 5, 10}, {10, 8, 10},
+	}
+	for _, tt := range tests {
+		if got := CalculateRealResources(tt.size, tt.tier); got != tt.want {
+			t.Errorf("CalculateRealResources(%d, T%d) = %d, want %d", tt.size, tt.tier, got, tt.want)
+		}
+	}
+}
+
+func TestDetectClusters_GroupsNearbySameTypeSameTier(t *testing.T) {
+	members := []ClusterMember{
+		{HX: 0, HY: 0, Type: "Wood", Tier: 4, HasTier: true, Size: 5, HasSize: true},
+		{HX: 1, HY: 1, Type: "Wood", Tier: 4, HasTier: true, Size: 5, HasSize: true},
+		{HX: 1000, HY: 1000, Type: "Wood", Tier: 4, HasTier: true, Size: 5, HasSize: true}, // far away
+	}
+	clusters := DetectClusters(members, 30, 2)
+
+	if len(clusters) != 1 {
+		t.Fatalf("len(clusters) = %d, want 1", len(clusters))
+	}
+	if clusters[0].Count != 2 {
+		t.Errorf("cluster count = %d, want 2 (far entity excluded)", clusters[0].Count)
+	}
+}
+
+func TestDetectClusters_DifferentTypeNeverGrouped(t *testing.T) {
+	members := []ClusterMember{
+		{HX: 0, HY: 0, Type: "Wood", Size: 5, HasSize: true},
+		{HX: 1, HY: 1, Type: "Ore", Size: 5, HasSize: true},
+	}
+	clusters := DetectClusters(members, 30, 2)
+
+	if len(clusters) != 0 {
+		t.Errorf("clusters = %+v, want none (different types, min size 2 never met)", clusters)
+	}
+}
+
+func TestDetectClusters_DifferentTierNeverGrouped(t *testing.T) {
+	members := []ClusterMember{
+		{HX: 0, HY: 0, Type: "Wood", Tier: 4, HasTier: true, Size: 5, HasSize: true},
+		{HX: 1, HY: 1, Type: "Wood", Tier: 5, HasTier: true, Size: 5, HasSize: true},
+	}
+	clusters := DetectClusters(members, 30, 2)
+
+	if len(clusters) != 0 {
+		t.Errorf("clusters = %+v, want none (different tiers)", clusters)
+	}
+}
+
+func TestDetectClusters_DepletedEntriesExcluded(t *testing.T) {
+	members := []ClusterMember{
+		{HX: 0, HY: 0, Type: "Wood", Size: 0, HasSize: true}, // depleted
+		{HX: 1, HY: 1, Type: "Wood", Size: 5, HasSize: true},
+	}
+	clusters := DetectClusters(members, 30, 1)
+
+	if len(clusters) != 1 || clusters[0].Count != 1 {
+		t.Errorf("clusters = %+v, want a single 1-member cluster (depleted entry excluded)", clusters)
+	}
+}
+
+func TestDetectClusters_BelowMinSizeExcluded(t *testing.T) {
+	members := []ClusterMember{{HX: 0, HY: 0, Type: "Wood", Size: 5, HasSize: true}}
+	clusters := DetectClusters(members, 30, 2)
+
+	if len(clusters) != 0 {
+		t.Errorf("clusters = %+v, want none (single entity below minClusterSize=2)", clusters)
+	}
+}
+
+func TestDetectClusters_EmptyInput(t *testing.T) {
+	if got := DetectClusters(nil, 30, 2); got != nil {
+		t.Errorf("DetectClusters(nil) = %v, want nil", got)
+	}
+}
