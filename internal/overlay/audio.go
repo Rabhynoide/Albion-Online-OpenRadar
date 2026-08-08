@@ -48,7 +48,7 @@ func loadPCM(ctx *audio.Context, path string) []byte {
 	}
 	defer f.Close()
 
-	stream, err := mp3.Decode(ctx, f)
+	stream, err := mp3.DecodeWithSampleRate(ctx.SampleRate(), f)
 	if err != nil {
 		logger.PrintWarn("OVERLAY", "decode alert sound %s failed: %v", path, err)
 		return nil

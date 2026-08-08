@@ -63,9 +63,9 @@ type App struct {
 
 	photonParser *photon.PhotonParser
 
-	OnEvent          func(*photon.EventData)
-	OnRequest        func(*photon.OperationRequest)
-	OnResponse       func(*photon.OperationResponse)
+	OnEvent           func(*photon.EventData)
+	OnRequest         func(*photon.OperationRequest)
+	OnResponse        func(*photon.OperationResponse)
 	OnUpdateAvailable func(version string)
 
 	packetsProcessed uint64
@@ -189,7 +189,7 @@ func (a *App) Context() context.Context { return a.ctx }
 // cmd/radar's TUI capture-state poller).
 func (a *App) Go(fn func()) { a.wg.Go(fn) }
 
-func (a *App) HTTPRunning() bool { return atomic.LoadInt32(&a.httpRunning) == 1 }
+func (a *App) HTTPRunning() bool        { return atomic.LoadInt32(&a.httpRunning) == 1 }
 func (a *App) PacketsProcessed() uint64 { return atomic.LoadUint64(&a.packetsProcessed) }
 func (a *App) PacketsErrors() uint64    { return atomic.LoadUint64(&a.packetsErrors) }
 func (a *App) PacketsEncrypted() uint64 { return atomic.LoadUint64(&a.packetsEncrypted) }

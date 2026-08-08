@@ -36,7 +36,7 @@ func newSettingsPage(deps Deps, s *Store) fyne.CanvasObject {
 		widget.NewSeparator(),
 		newMarketSection(deps.AppDir),
 		widget.NewSeparator(),
-		newDangerZoneSection(deps, s),
+		newDangerZoneSection(s),
 	)
 	return container.NewVScroll(sections)
 }
@@ -332,7 +332,7 @@ func newMarketSection(appDir string) fyne.CanvasObject {
 	)
 }
 
-func newDangerZoneSection(deps Deps, s *Store) fyne.CanvasObject {
+func newDangerZoneSection(s *Store) fyne.CanvasObject {
 	resetBtn := widget.NewButton("Réinitialiser tous les réglages", func() {
 		dialog.ShowConfirm("Réinitialiser tous les réglages",
 			"Cette action remet tous les réglages à leur valeur par défaut. Elle est irréversible.",

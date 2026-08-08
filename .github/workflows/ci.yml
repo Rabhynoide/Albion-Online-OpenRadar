@@ -45,8 +45,11 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup
 
+      # ebiten's internal/ui package eagerly initializes GLFW/X11 at package-import time (not
+      # lazily), which panics on a headless runner with no DISPLAY - even for internal/overlay's
+      # own tests, none of which open a real window. xvfb-run gives it a fake one to talk to.
       - name: Test Go
-        run: go test ./...
+        run: xvfb-run -a go test ./...
 
       - name: Test Frontend
         run: npm test

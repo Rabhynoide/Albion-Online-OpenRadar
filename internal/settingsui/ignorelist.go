@@ -1,7 +1,7 @@
 package settingsui
 
 import (
-	"fmt"
+	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -18,12 +18,12 @@ func newIgnoreListPage(s *Store) fyne.CanvasObject {
 	var names []string
 	s.GetJSON("ignoreList", &names)
 
-	count := widget.NewLabel(fmt.Sprintf("%d", len(names)))
+	count := widget.NewLabel(strconv.Itoa(len(names)))
 
 	var listWidget *widget.List
 	save := func() {
 		s.SetJSON("ignoreList", names)
-		count.SetText(fmt.Sprintf("%d", len(names)))
+		count.SetText(strconv.Itoa(len(names)))
 		listWidget.Refresh()
 	}
 
@@ -33,9 +33,20 @@ func newIgnoreListPage(s *Store) fyne.CanvasObject {
 			return container.NewHBox(widget.NewLabel(""), layout.NewSpacer(), widget.NewButton("Retirer", nil))
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
-			row := o.(*fyne.Container)
-			row.Objects[0].(*widget.Label).SetText(names[i])
-			row.Objects[2].(*widget.Button).OnTapped = func() {
+			row, ok := o.(*fyne.Container)
+			if !ok {
+				return
+			}
+			label, ok := row.Objects[0].(*widget.Label)
+			if !ok {
+				return
+			}
+			label.SetText(names[i])
+			btn, ok := row.Objects[2].(*widget.Button)
+			if !ok {
+				return
+			}
+			btn.OnTapped = func() {
 				names = append(names[:i], names[i+1:]...)
 				save()
 			}

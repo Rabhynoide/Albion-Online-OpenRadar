@@ -68,6 +68,8 @@ func (oc *overlayControl) start() {
 		logger.PrintWarn("SETTINGS", "resolve radar executable failed: %v", err)
 		return
 	}
+	// #nosec G204 -- exe comes from radarExecutablePath, which only ever resolves a path next to
+	// this executable or under appDir and confirms it exists via os.Stat first; never user input.
 	cmd := exec.Command(exe, "-overlay", "-no-server")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

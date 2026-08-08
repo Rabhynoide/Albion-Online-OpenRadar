@@ -11,13 +11,6 @@ import (
 	"github.com/nospy/albion-openradar/internal/radarstate"
 )
 
-// resourceKind describes one of the 10 Static/Living × Fiber/Hide/Wood/Ore/Rock grids, matching
-// web/scripts/utils/ResourcesHelper.js's `resources` array in resources.gohtml's inline script.
-type resourceKind struct {
-	label string // "Fiber", "Hide", "Wood", "Ore", "Rock"
-	kind  string // "Static" or "Living", used verbatim in the storage key
-}
-
 // resourceStorageKey mirrors ResourcesHelper.js's getResourceStorageKey.
 func resourceStorageKey(label, kind string) string {
 	return "setting" + kind + label + "Enchants"
@@ -25,7 +18,7 @@ func resourceStorageKey(label, kind string) string {
 
 func gridCell(g radarstate.EnchantGrid, level string, tier int) bool {
 	row, ok := g[level]
-	if !ok || tier-1 >= len(row) || tier-1 < 0 {
+	if !ok || tier > len(row) || tier <= 0 {
 		return false
 	}
 	return row[tier-1]
@@ -79,7 +72,7 @@ func newResourceGrid(s *Store, label, kind string) fyne.CanvasObject {
 					allChecked = false
 				}
 			}
-			target := !(allChecked && any)
+			target := !allChecked || !any
 			for _, level := range enchantLevels {
 				c := checks[level][t-1]
 				if c == nil {

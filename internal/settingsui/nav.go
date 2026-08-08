@@ -20,8 +20,7 @@ func buildSidebarNav(items []navItem) (sidebar, content fyne.CanvasObject) {
 	pages := container.NewStack()
 	buttons := make([]*widget.Button, len(items))
 
-	var show func(i int)
-	show = func(i int) {
+	show := func(i int) {
 		pages.RemoveAll()
 		pages.Add(items[i].content)
 		for j, b := range buttons {
@@ -36,7 +35,6 @@ func buildSidebarNav(items []navItem) (sidebar, content fyne.CanvasObject) {
 
 	navBox := container.NewVBox()
 	for i, item := range items {
-		i := i
 		b := widget.NewButton(item.label, func() { show(i) })
 		b.Alignment = widget.ButtonAlignLeading
 		buttons[i] = b
