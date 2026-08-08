@@ -214,6 +214,12 @@
   `docs/technical/NATIVE_SETTINGS_CLIENT.md`'s status section for what's left. Embedding a map
   view directly in `cmd/radar-settings` (as an alternative to launching the separate overlay
   window) was scoped and deliberately deferred - real work, not started.
+- **SETTINGS-2**: native Settings page parity follow-up found while validating SETTINGS-1 live -
+  the "LAN access" list (clickable `http://<lan-ip>:port/` links, `NetworkSettingsHandler.js`)
+  had no native equivalent, and the Network section's capture-status banner only refreshed on
+  the manual buttons instead of polling like the web page does. Added both to
+  `internal/settingsui/settings.go`'s `newNetworkSection` (`capture.LANAddresses()`, a 5s
+  `fyne.Do` ticker mirroring the one `run.go`'s top bar already used).
 
 ## Closed in v2.2
 

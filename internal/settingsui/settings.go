@@ -2,6 +2,7 @@ package settingsui
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -174,6 +175,20 @@ func newNetworkSection(deps Deps) fyne.CanvasObject {
 	title := widget.NewLabelWithStyle("Réseau", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	status := widget.NewLabel("")
 	list := container.NewVBox()
+	lanTitle := widget.NewLabelWithStyle("Accès LAN", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	lanHint := widget.NewLabel("Accessible depuis d'autres appareils du même réseau local. Indépendant des interfaces de capture ci-dessus.")
+	lanList := container.NewVBox()
+	for _, addr := range capture.LANAddresses() {
+		raw := fmt.Sprintf("http://%s:%d/", addr, deps.ServerPort)
+		u, err := url.Parse(raw)
+		if err != nil {
+			continue
+		}
+		lanList.Add(widget.NewHyperlink(raw, u))
+	}
+	if len(lanList.Objects) == 0 {
+		lanList.Add(widget.NewLabel("Aucune adresse LAN détectée."))
+	}
 	body := container.NewVBox(title, status, list)
 
 	var checks map[string]*widget.Check
@@ -194,6 +209,16 @@ func newNetworkSection(deps Deps) fyne.CanvasObject {
 			status.SetText("Capture active sur : " + strings.Join(names, ", "))
 		}
 	}
+	// Web polls /api/network/state every 5s so the status banner reflects a dropped/plugged
+	// interface without user action (settings.gohtml). Mirror that here instead of only updating
+	// on the manual refresh/apply buttons.
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			fyne.Do(refreshState)
+		}
+	}()
 
 	rebuild := func(fresh []capture.NetworkInterface) {
 		ifaces = fresh
@@ -246,6 +271,10 @@ func newNetworkSection(deps Deps) fyne.CanvasObject {
 	})
 
 	body.Add(container.NewHBox(apply, refresh))
+	body.Add(widget.NewSeparator())
+	body.Add(lanTitle)
+	body.Add(lanHint)
+	body.Add(lanList)
 	return body
 }
 
