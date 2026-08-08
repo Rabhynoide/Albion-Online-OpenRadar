@@ -298,11 +298,21 @@ chrome, but driven by settings this package's Settings page edits:
   `internal/radarstate` (specifically zone tracking, to resolve which city a listing belongs to) -
   not wired in this phase. `cmd/radar-settings` still runs the HTTP/WS server so the Market page
   keeps working exactly as before in a browser.
-- **Web pages not yet removed.** Radar/Players/Resources/Enemies/Chests/Ignore List/Settings all
-  still exist in `internal/templates/pages/` and are reachable in the browser, now fully redundant
-  with this client. Removal is pending manual validation of each native page (see
-  `docs/project/TODO.md`'s SETTINGS-1 entry) - once confirmed, delete the `.gohtml` + route +
-  nav entry + now-dead JS per page, leaving only `market.gohtml`.
+- **Web page removal, phase 1 done (SETTINGS-3).** Players/Resources/Enemies/Chests/Ignore
+  List/Settings - the 6 pages with zero cross-page dependencies - are deleted (`.gohtml` +
+  `pageRoutes`/`titles` in `internal/server/http.go` + `DefaultNavItems()` in
+  `internal/templates/data.go` + both dispatch chains in `layouts/base.gohtml`/
+  `layouts/content.gohtml` + `NetworkSettingsHandler.js`/`ResourcesHelper.js`, the only JS
+  exclusive to them). **`radar.gohtml` stays, deliberately** - it turned out to be load-bearing
+  for Market in two undocumented ways: Market's item search reads `window.itemsDatabase`, which
+  is populated only by `radar.gohtml`'s own script (`DatabaseLoader.load()`), and Market's live
+  price-observation feature (`MarketHandler.js`, issue #23) only ever receives data through
+  `EventRouter.onResponse`, which is only initialized by `radar.gohtml`'s script too. Deleting
+  `radar.gohtml` as originally planned would have silently broken both, with no test catching
+  it (`data/_MarketHandler.test.js` unit-tests the class directly, so it can't see the wiring
+  gap). Removal of `radar.gohtml` is phase 2, blocked on giving Market its own self-contained
+  `window.itemsDatabase` load and its own minimal WS/event pipeline instead of piggybacking on
+  the Radar page happening to be open in the same tab.
 - **No embedded map view in this client.** Discussed and deliberately deferred: rendering the
   radar map inside `cmd/radar-settings` itself (as an alternative to launching the separate
   overlay window) would need the Ebiten-free parts of `internal/overlay` (state aggregation,

@@ -42,6 +42,15 @@
 ### Other improvements
 
 - [ ] Quality metrics dashboard.
+- [ ] **Web page removal phase 2** (follow-up to SETTINGS-3): give Market its own
+  `window.itemsDatabase` load (currently only populated by `radar.gohtml`'s script) and its own
+  minimal WS/event pipeline for live price observation (`MarketHandler.js`, issue #23 - currently
+  only reachable via `EventRouter.onResponse`, itself only initialized by `radar.gohtml`). Once
+  Market no longer depends on the Radar page being open in the same tab, delete `radar.gohtml` +
+  its route/nav entry + the JS reachable only from it (`EventRouter.js`, `WebSocketManager.js`,
+  `DatabaseLoader.js`, `RadarRenderer.js`, all 9 handler classes and 11 drawing classes under
+  `web/scripts/handlers/`/`web/scripts/drawings/` - full list was mapped during SETTINGS-3's
+  investigation, not repeated here since it'll need re-verifying against the codebase at the time).
 
 ## Closed in v2.3 (in progress)
 
@@ -210,16 +219,23 @@
   a native-overlay-only addition with no direct web equivalent.
 
   Web page removal (Radar/Players/Resources/Enemies/Chests/Ignore List/Settings, Market stays
-  web-only) is still pending, done once each native page is manually validated - see
-  `docs/technical/NATIVE_SETTINGS_CLIENT.md`'s status section for what's left. Embedding a map
-  view directly in `cmd/radar-settings` (as an alternative to launching the separate overlay
-  window) was scoped and deliberately deferred - real work, not started.
+  web-only) is partly done - see **SETTINGS-3** below. Embedding a map view directly in
+  `cmd/radar-settings` (as an alternative to launching the separate overlay window) was scoped
+  and deliberately deferred - real work, not started.
 - **SETTINGS-2**: native Settings page parity follow-up found while validating SETTINGS-1 live -
   the "LAN access" list (clickable `http://<lan-ip>:port/` links, `NetworkSettingsHandler.js`)
   had no native equivalent, and the Network section's capture-status banner only refreshed on
   the manual buttons instead of polling like the web page does. Added both to
   `internal/settingsui/settings.go`'s `newNetworkSection` (`capture.LANAddresses()`, a 5s
   `fyne.Do` ticker mirroring the one `run.go`'s top bar already used).
+- **SETTINGS-3**: web page removal phase 1 - deleted Players/Resources/Enemies/Chests/Ignore
+  List/Settings (`.gohtml` + routes + nav + the JS exclusive to them,
+  `NetworkSettingsHandler.js`/`ResourcesHelper.js`), now fully redundant with
+  `cmd/radar-settings`. `radar.gohtml` deliberately kept - removing it turned out to require
+  rewiring Market first (it silently depends on `radar.gohtml`'s script for both its item search
+  and its live price-observation feature, issue #23) - see
+  `docs/technical/NATIVE_SETTINGS_CLIENT.md`'s "Web page removal, phase 1 done" entry and the
+  new v2.3 backlog item below for phase 2.
 - **TREASURE-2** (#165, "trésor enfoui non affiché"): a real pcap capture (2026-08-08,
   user-reported while gathering in a Black Zone) showed a buried-treasure decor ("destroy to
   spawn loot") that never rendered on the radar. Root cause: `LocalTreasuresHandler.js` /

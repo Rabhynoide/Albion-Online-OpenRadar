@@ -29,25 +29,9 @@
     <script type="module">
         import { CATEGORIES } from '/scripts/constants/LoggerConstants.js';
         import settingsSync from '/scripts/utils/SettingsSync.js';
-        import {
-            attachCheckboxListeners,
-            generateResourceGrid,
-            initializeTierButtonStates,
-            updateTierButtonState,
-            selectAllTierEnchants,
-            getResourceStorageKey
-        } from '/scripts/utils/ResourcesHelper.js';
 
         window.CATEGORIES = CATEGORIES;
         window.settingsSync = settingsSync;
-        window.ResourcesHelper = {
-            attachCheckboxListeners,
-            generateResourceGrid,
-            initializeTierButtonStates,
-            updateTierButtonState,
-            selectAllTierEnchants,
-            getResourceStorageKey
-        };
 
         // Issue #21: hydrate any setting missing from this browser's localStorage from the
         // backend's settings-sync.json before any page reads a setting default - every page's
@@ -143,24 +127,12 @@
                   hx-swap-oob="true">
                 <div class="container mx-auto animate-in">
                     {{if eq .Page "radar"}}{{template "pages/radar" .}}
-                    {{else if eq .Page "players"}}{{template "pages/players" .}}
-                    {{else if eq .Page "resources"}}{{template "pages/resources" .}}
-                    {{else if eq .Page "enemies"}}{{template "pages/enemies" .}}
-                    {{else if eq .Page "chests"}}{{template "pages/chests" .}}
                     {{else if eq .Page "market"}}{{template "pages/market" .}}
-                    {{else if eq .Page "ignorelist"}}{{template "pages/ignorelist" .}}
-                    {{else if eq .Page "settings"}}{{template "pages/settings" .}}
                     {{else}}{{template "pages/radar" .}}{{end}}
                 </div>
 
                 {{if eq .Page "radar"}}{{template "scripts/radar" .}}
-                {{else if eq .Page "players"}}{{template "scripts/players" .}}
-                {{else if eq .Page "resources"}}{{template "scripts/resources" .}}
-                {{else if eq .Page "enemies"}}{{template "scripts/enemies" .}}
-                {{else if eq .Page "chests"}}{{template "scripts/chests" .}}
                 {{else if eq .Page "market"}}{{template "scripts/market" .}}
-                {{else if eq .Page "ignorelist"}}{{template "scripts/ignorelist" .}}
-                {{else if eq .Page "settings"}}{{template "scripts/settings" .}}
                 {{end}}
             </main>
         </div>

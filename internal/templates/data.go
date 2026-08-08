@@ -29,13 +29,7 @@ type NavItem struct {
 func DefaultNavItems() []NavItem {
 	return []NavItem{
 		{Path: "/", Label: "Radar", Icon: "radar"},
-		{Path: "/players", Label: "Players", Icon: "users"},
-		{Path: "/resources", Label: "Resources", Icon: "gem"},
-		{Path: "/enemies", Label: "Enemies", Icon: "skull"},
-		{Path: "/chests", Label: "Chests", Icon: "archive"},
 		{Path: "/market", Label: "Market", Icon: "coins"},
-		{Path: "/ignorelist", Label: "Ignore List", Icon: "user-x"},
-		{Path: "/settings", Label: "Settings", Icon: "settings"},
 	}
 }
 

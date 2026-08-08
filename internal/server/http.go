@@ -201,15 +201,9 @@ func (s *HTTPServer) setupRoutes() {
 
 	// Page routes - SSR with Go templates
 	pageRoutes := map[string]string{
-		"/":           "radar",
-		"/home":       "radar",
-		"/players":    "players",
-		"/resources":  "resources",
-		"/enemies":    "enemies",
-		"/chests":     "chests",
-		"/ignorelist": "ignorelist",
-		"/settings":   "settings",
-		"/market":     "market",
+		"/":       "radar",
+		"/home":   "radar",
+		"/market": "market",
 	}
 
 	for route, page := range pageRoutes {
@@ -256,14 +250,8 @@ func noStore(h http.Handler) http.Handler {
 func (s *HTTPServer) renderPage(w http.ResponseWriter, r *http.Request, page string) {
 	// Get page title
 	titles := map[string]string{
-		"radar":      "Radar",
-		"players":    "Players",
-		"resources":  "Resources",
-		"enemies":    "Enemies",
-		"chests":     "Chests",
-		"market":     "Market",
-		"ignorelist": "Ignore List",
-		"settings":   "Settings",
+		"radar":  "Radar",
+		"market": "Market",
 	}
 	title := titles[page]
 	if title == "" && page != "" {

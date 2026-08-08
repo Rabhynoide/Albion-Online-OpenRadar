@@ -287,13 +287,7 @@ var pageContentMarkers = []struct {
 	marker string
 }{
 	{"/", "mapCanvas"},
-	{"/players", "settingShowPlayers"},
-	{"/resources", "settingResourceSound"},
-	{"/enemies", "settingAllEnemies"},
-	{"/chests", "settingChestGreen"},
 	{"/market", "marketSearchInput"},
-	{"/ignorelist", "ignorePlayerInput"},
-	{"/settings", "confirmResetSettings"},
 }
 
 // Regression guard: internal/templates/layouts/base.gohtml (full page load) and
@@ -324,8 +318,8 @@ func TestAllPagesRenderTheirOwnContent(t *testing.T) {
 func TestHTMLPagesVaryOnHxRequest(t *testing.T) {
 	s := newTestServer(t, "2.2.3", false)
 
-	full := do(s, http.MethodGet, "/players", nil)
-	partial := do(s, http.MethodGet, "/players", map[string]string{"Hx-Request": "true"})
+	full := do(s, http.MethodGet, "/market", nil)
+	partial := do(s, http.MethodGet, "/market", map[string]string{"Hx-Request": "true"})
 
 	if full.Body.Len() == partial.Body.Len() {
 		t.Fatal("full page and HTMX partial are identical, this test proves nothing")
