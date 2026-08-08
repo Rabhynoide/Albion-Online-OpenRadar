@@ -9,9 +9,17 @@ ARG BUILD_TIME=unknown
 
 WORKDIR /app
 
-# Install libpcap (cached layer)
+# Install libpcap + ebiten's native deps (cached layer) - cmd/radar imports internal/overlay
+# (ebiten, for -overlay) unconditionally at compile time even though the overlay is a Windows-
+# only feature at runtime; X11/ALSA dev headers are required just to get past cgo import, not to
+# actually run it.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpcap-dev && \
+    apt-get install -y --no-install-recommends \
+      libpcap-dev \
+      gcc pkg-config \
+      libgl1-mesa-dev libglu1-mesa-dev \
+      xorg-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxxf86vm-dev \
+      libasound2-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy and cache dependencies

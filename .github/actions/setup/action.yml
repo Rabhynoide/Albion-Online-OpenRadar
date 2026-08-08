@@ -17,10 +17,23 @@ runs:
         node-version: "lts/*"
         cache: "npm"
 
-    - name: Install libpcap (CGO, Linux only)
+    # libpcap for internal/capture; the rest for the two GUI toolkits pulled in by
+    # cmd/radar (ebiten, for -overlay) and cmd/radar-settings (Fyne) - both are Windows-only
+    # products (see docs/technical/NATIVE_*_CLIENT.md), but `go build ./...`/`go vet ./...`/
+    # golangci-lint still fully typecheck every package for the host GOOS regardless of what
+    # actually ships for that OS, and both toolkits' cgo bindings fail to import at all without
+    # their native dev headers present - not a lint config issue, a missing system package one.
+    - name: Install libpcap + ebiten/Fyne native deps (CGO, Linux only)
       if: runner.os == 'Linux'
       shell: bash
-      run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+      run: |
+        sudo apt-get update && sudo apt-get install -y \
+          libpcap-dev \
+          gcc pkg-config \
+          libgl1-mesa-dev libglu1-mesa-dev \
+          xorg-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxxf86vm-dev \
+          libasound2-dev \
+          libwayland-dev libxkbcommon-dev
 
     - name: Install npm dependencies
       shell: bash
