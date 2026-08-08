@@ -532,7 +532,7 @@ export function onEvent(Parameters) {
         // timed special/anniversary events - a full parallel-array resync, unlike every other
         // detection type here (see PROTOCOL18_PARAM_LAYOUTS.md's LocalTreasuresUpdate section).
         case EventCodes.LocalTreasuresUpdate:
-            handlers.localTreasuresHandler?.handleLocalTreasuresUpdate(Parameters);
+            handlers.localTreasuresHandler?.handleLocalTreasuresUpdate(Parameters, mobsHandler);
             break;
 
         case EventCodes.NewFishingZoneObject:

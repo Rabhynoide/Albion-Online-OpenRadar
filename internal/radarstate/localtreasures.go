@@ -14,18 +14,26 @@ type LocalTreasure struct {
 }
 
 // excludedLocalTreasureLabelPrefixes mirrors LocalTreasuresHandler.js's
-// EXCLUDED_LABEL_PREFIXES: a SPECIAL_EVENT_* entry shares its entity id with a real NewMob
-// (pcap-confirmed 2026-07-30) - drawing it here would duplicate an encounter already shown,
-// with better threat info, by mob detection. ANNIVERSARY has no matching mob id and stays.
+// EXCLUDED_LABEL_PREFIXES: a SPECIAL_EVENT_* entry is drawn UNLESS a mob with the same id is
+// currently tracked (pcap-confirmed 2026-07-30) - drawing it in that case would duplicate an
+// encounter already shown, with better threat info, by mob detection. ANNIVERSARY has no
+// matching mob id and stays. issue #164/#163 (2026-08-08) pcap-confirmed a second SPECIAL_EVENT_1
+// case with no matching mob id anywhere (a buried-treasure decor) that a blanket label exclusion
+// used to hide regardless - see LocalTreasuresHandler.js's doc comment for the full finding.
 var excludedLocalTreasureLabelPrefixes = []string{"SPECIAL_EVENT"}
 
-func isDrawableLocalTreasureLabel(label string) bool {
+func isDrawableLocalTreasureLabel(label string, id int, hasMob func(id int) bool) bool {
+	isSpecialEvent := false
 	for _, prefix := range excludedLocalTreasureLabelPrefixes {
 		if strings.HasPrefix(label, prefix) {
-			return false
+			isSpecialEvent = true
+			break
 		}
 	}
-	return true
+	if !isSpecialEvent {
+		return true
+	}
+	return hasMob == nil || !hasMob(id)
 }
 
 // LocalTreasuresState is a Go port of LocalTreasuresHandler.js.
@@ -42,7 +50,7 @@ func NewLocalTreasuresState() *LocalTreasuresState {
 // resync of every active local treasure in the zone as parallel arrays (ids=[4],
 // positions=[5] flattened [x0,y0,x1,y1,...], startTicks=[6], endTicks=[7], labels=[8]) rather
 // than one event per entity. Removal still arrives individually via the normal Leave event.
-func (s *LocalTreasuresState) HandleLocalTreasuresUpdate(p Params) {
+func (s *LocalTreasuresState) HandleLocalTreasuresUpdate(p Params, hasMob func(id int) bool) {
 	ids := paramIntSlice(p, 4)
 	positions := paramFloat32Slice(p, 5)
 	startTicks := paramIntSlice(p, 6)
@@ -54,7 +62,7 @@ func (s *LocalTreasuresState) HandleLocalTreasuresUpdate(p Params) {
 			break
 		}
 		label := labels[i]
-		if !isDrawableLocalTreasureLabel(label) {
+		if !isDrawableLocalTreasureLabel(label, id, hasMob) {
 			continue
 		}
 		if i*2+1 >= len(positions) {

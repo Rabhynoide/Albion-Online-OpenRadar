@@ -16,7 +16,7 @@
 | Chests | basic | rarity persisted on entity (#75); drawing-layer color resolution and rarity source slot still open |
 | Fishing | working | issue #25 closed via #73 + #85. Event 61 (end-of-fishing) logged but not visualized. |
 | GPS / Avalon Roads | working | static open-world graph from `cluster/world.json`, road discovery by play, 24h staleness confirmed from game data, manual "Remove this route" for roads that reset early (#5) - see `docs/technical/AVALON_ROADS_GPS.md`. Per-instance road duration still unobservable. Optional shared roads database via self-hosted `cmd/hub` (Docker, SQLite, shared-secret auth) - radar backend relays/falls back automatically, see `cmd/hub/README.md`. |
-| Local Treasures | working | buried chests, temporary resources, smuggler piles, timed events via `LocalTreasuresUpdate` (event 285, #4); `SPECIAL_EVENT_*` excluded as mob-detection duplicates. Single shared icon in v1, no per-type icons or countdown yet. |
+| Local Treasures | working | buried chests, temporary resources, smuggler piles, timed events via `LocalTreasuresUpdate` (event 285, #4); `SPECIAL_EVENT_*` excluded only when the id is also a live mob (#165), not on the label alone. Single shared icon in v1, no per-type icons or countdown yet. |
 | Market Prices | working | item search + per-city price table, backed by the public Albion Online Data Project API, cached/shared via the Hub when configured; live in-game contribution to the Hub while browsing the marketplace (#23) - see `docs/technical/MARKET_PRICES.md`. Black Market observations not attributed (doesn't appear under that name in `zones.json`). |
 
 ## v2.3 backlog
@@ -220,6 +220,18 @@
   the manual buttons instead of polling like the web page does. Added both to
   `internal/settingsui/settings.go`'s `newNetworkSection` (`capture.LANAddresses()`, a 5s
   `fyne.Do` ticker mirroring the one `run.go`'s top bar already used).
+- **TREASURE-2** (#165, "trésor enfoui non affiché"): a real pcap capture (2026-08-08,
+  user-reported while gathering in a Black Zone) showed a buried-treasure decor ("destroy to
+  spawn loot") that never rendered on the radar. Root cause: `LocalTreasuresHandler.js` /
+  `internal/radarstate/localtreasures.go` excluded every `SPECIAL_EVENT_*`-labeled
+  `LocalTreasuresUpdate` entry unconditionally, based on a single 2026-07-30 capture where a
+  `SPECIAL_EVENT_1` entry happened to duplicate a real `NewMob` (a "world boss lead-up" event).
+  This capture's `SPECIAL_EVENT_1` entity (id `102115`) never appeared anywhere else in 16
+  minutes of traffic - no matching `NewMob`, no `Leave` - proving the label alone doesn't mean
+  "duplicate of a mob". Fixed by cross-checking the entity id against the live mob list instead
+  of the label: `MobsHandler.hasMob(id)` (JS) / `MobsState.HasMob(id)` (Go), wired through
+  `EventRouter.js`/`internal/radarstate/router.go` at the `LocalTreasuresUpdate` call site. See
+  `docs/technical/PROTOCOL18_PARAM_LAYOUTS.md`'s event 285 section for the full finding.
 
 ## Closed in v2.2
 

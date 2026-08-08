@@ -124,7 +124,7 @@ func (r *Router) HandleEvent(event *photon.EventData) {
 		r.WispCage.HandleCagedObjectStateUpdated(p)
 
 	case eventcodes.LocalTreasuresUpdate:
-		r.LocalTreasures.HandleLocalTreasuresUpdate(p)
+		r.LocalTreasures.HandleLocalTreasuresUpdate(p, r.Mobs.HasMob)
 
 	case eventcodes.NewFishingZoneObject:
 		r.Fishing.HandleNewFishingZoneObject(p)

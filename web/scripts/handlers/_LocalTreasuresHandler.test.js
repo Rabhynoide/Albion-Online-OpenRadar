@@ -24,16 +24,18 @@ describe('LocalTreasuresHandler', () => {
 
     describe('handleLocalTreasuresUpdate (event 285)', () => {
         // @verified 2026-07-30: live capture, settingLocalTreasures=true. Two entities in one
-        // packet: a SPECIAL_EVENT_1 (excluded, see below) and a buried treasure chest
-        // (endTicks=0, no closing time) - only the chest should end up in the list.
+        // packet: a SPECIAL_EVENT_1 that also has a live mob with the same id (excluded, see
+        // below) and a buried treasure chest (endTicks=0, no closing time) - only the chest
+        // should end up in the list.
         test('live capture: parses parallel arrays into one Treasure per drawable entity', () => {
+            const mobsHandler = {hasMob: (id) => id === 77706};
             handler.handleLocalTreasuresUpdate({
                 4: [77706, 78042],
                 5: [40, -310, 121, -141],
                 6: [639210373950865300, 639210375691831200],
                 7: [639211236063285500, 0],
                 8: ['SPECIAL_EVENT_1', 'CHEST'],
-            });
+            }, mobsHandler);
 
             expect(handler.treasuresList).toHaveLength(1);
 
@@ -46,14 +48,43 @@ describe('LocalTreasuresHandler', () => {
 
         // @verified 2026-07-30: live capture confirmed SPECIAL_EVENT_1 id 77706 is also a real
         // NewMob (MOB_EVENT_LEAD_UP_SPEARMAN_T7) - drawing it here would duplicate an encounter
-        // already shown, with better threat info, by the existing mob detection.
-        test('SPECIAL_EVENT_* labels are excluded (duplicate of existing mob detection)', () => {
+        // already shown, with better threat info, by the existing mob detection. Simulated here
+        // via a mobsHandler stub reporting both ids as tracked mobs.
+        test('SPECIAL_EVENT_* labels are excluded when a mob with the same id is tracked', () => {
+            const mobsHandler = {hasMob: () => true};
             handler.handleLocalTreasuresUpdate({
                 4: [77706, 11306], 5: [40, -310, -537, 220], 6: [1, 1], 7: [0, 0],
                 8: ['SPECIAL_EVENT_1', 'SPECIAL_EVENT_3'],
-            });
+            }, mobsHandler);
 
             expect(handler.treasuresList).toHaveLength(0);
+        });
+
+        // @verified 2026-08-08 (issue #164/#163): a real pcap capture of a buried-treasure decor
+        // ("destroy to spawn loot") showed a SPECIAL_EVENT_1 entry (id 102115) that never
+        // appeared anywhere else in the capture - no matching NewMob, not even a Leave for that
+        // id - yet the old blanket label exclusion hid it from the radar regardless. A blanket
+        // exclusion by label alone can't tell this case apart from the lead-up-mob case above;
+        // only a live mob-id cross-check can. No mobsHandler passed at all (router-less call
+        // site, or a genuinely absent mob list) must fail open (stay drawable) rather than hide
+        // the entity, which is the whole point of this fix.
+        test('SPECIAL_EVENT_* label stays drawable when no mob shares its id', () => {
+            const mobsHandler = {hasMob: () => false};
+            handler.handleLocalTreasuresUpdate({
+                4: [102115], 5: [-298, 299], 6: [639217720633865856], 7: [0],
+                8: ['SPECIAL_EVENT_1'],
+            }, mobsHandler);
+
+            expect(handler.treasuresList).toHaveLength(1);
+            expect(handler.treasuresList[0]).toMatchObject({id: 102115, label: 'SPECIAL_EVENT_1'});
+        });
+
+        test('SPECIAL_EVENT_* label stays drawable when no mobsHandler is passed at all', () => {
+            handler.handleLocalTreasuresUpdate({
+                4: [102115], 5: [-298, 299], 6: [1], 7: [0], 8: ['SPECIAL_EVENT_1'],
+            });
+
+            expect(handler.treasuresList).toHaveLength(1);
         });
 
         // @verified 2026-07-30: ANNIVERSARY was checked against the same capture and has no

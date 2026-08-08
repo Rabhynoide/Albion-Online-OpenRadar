@@ -261,6 +261,15 @@ func classifyEnemyCategory(category, uniqueName string) EnemyType {
 
 func (s *MobsState) Remove(id int) { s.mobs.remove(id) }
 
+// HasMob reports whether id is currently tracked as a mob. Used by LocalTreasuresState to tell
+// apart a SPECIAL_EVENT_* entry that duplicates a real mob encounter (id also tracked here) from
+// one that doesn't (issue #164/#163 - a buried-treasure decor sharing the same wire label as a
+// "world boss lead-up" mob event, with no matching mob id ever tracked for it).
+func (s *MobsState) HasMob(id int) bool {
+	_, ok := s.mobs.get(id)
+	return ok
+}
+
 // UpdatePosition ports updateMobPosition.
 func (s *MobsState) UpdatePosition(id int, posX, posY float32) {
 	s.mobs.mutate(id, func(m *Mob) { m.PosX, m.PosY = posX, posY })

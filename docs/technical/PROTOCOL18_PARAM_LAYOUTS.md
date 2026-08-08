@@ -140,16 +140,27 @@ Removal is **not** batched: individual entity ids from this event later receive 
 single-id `Leave` (event 1), same as every other entity type - confirmed by tracking specific
 ids across a capture.
 
-`SPECIAL_EVENT_1`/`SPECIAL_EVENT_3` share their entity id with a real `NewMob` (event 123) -
+`SPECIAL_EVENT_1`/`SPECIAL_EVENT_3` can share their entity id with a real `NewMob` (event 123) -
 e.g. id `77706` was simultaneously a `SPECIAL_EVENT_1` entry here and a `NewMob` with
-`params[31] = "MOB_EVENT_LEAD_UP_SPEARMAN_T7"`. `web/scripts/handlers/LocalTreasuresHandler.js`
-excludes these labels for exactly this reason - drawing them would duplicate an encounter
-already shown, with better threat info, by the existing mob detection. `ANNIVERSARY` was
-checked against the same capture and has no matching mob id, so it stays drawable. `CHEST`
+`params[31] = "MOB_EVENT_LEAD_UP_SPEARMAN_T7"` (2026-07-30 capture). `ANNIVERSARY` was checked
+against the same capture and has no matching mob id, so it stays drawable. `CHEST`
 entries observed so far always have `endTicks = 0` (no expiration - a buried treasure just
 sits there until dug up); `SPECIAL_EVENT_1`/`ANNIVERSARY` entries carry a real ~24h
 start/end window, matching this event's status as the reference pattern for any future
 "does this entity have a real lifetime" investigation.
+
+**The label alone does not mean "duplicate of a mob"** - issue #164/#163 (2026-08-08 capture,
+user-reported: a buried-treasure decor "destroy to spawn loot" never showed on the radar)
+pcap-confirmed a second `SPECIAL_EVENT_1` case, id `102115`, that never appears anywhere else in
+a 16-minute capture - no matching `NewMob`, not even a normal single-id `Leave` (event 1) for
+that id when it drops out of the periodic resync. Two `SPECIAL_EVENT_1` entries, same wire
+label, one is a mob-lead-up duplicate and the other is a standalone treasure-like decor with no
+other representation on the wire at all. `web/scripts/handlers/LocalTreasuresHandler.js` and
+`internal/radarstate/localtreasures.go` used to exclude every `SPECIAL_EVENT_*` entry
+unconditionally on the label alone, which silently hid the second case. Fixed to cross-check the
+entity id against the live mob list at draw time (`MobsHandler.hasMob(id)` /
+`MobsState.HasMob(id)`) instead - only suppress a `SPECIAL_EVENT_*` entry when a mob with the
+*same id* is actually currently tracked; otherwise draw it like any other local treasure.
 
 ### Party events (231, 232, 235, 229)
 

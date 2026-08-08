@@ -134,7 +134,8 @@ A related but separate detection, added alongside the GPS work: `web/scripts/han
 renders buried treasure chests, temporary resource nodes, smuggler piles, and timed world
 events found via the same event that motivated the ticks-format investigation above. See
 `PROTOCOL18_PARAM_LAYOUTS.md`'s event 285 section for the wire layout and why
-`SPECIAL_EVENT_*` labels are excluded (they duplicate the existing mob detection).
+`SPECIAL_EVENT_*` labels are conditionally excluded (only when the entity id is also a live,
+currently-tracked mob - not on the label alone, see issue #164/#163).
 
 ## The Hub: shared roads across a group
 

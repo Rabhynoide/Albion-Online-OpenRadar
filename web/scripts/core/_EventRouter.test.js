@@ -56,7 +56,8 @@ describe('EventRouter', () => {
                 debugLogMobById: vi.fn(),
                 updateMobHealth: vi.fn(),
                 updateMobHealthRegen: vi.fn(),
-                updateMobHealthBulk: vi.fn()
+                updateMobHealthBulk: vi.fn(),
+                hasMob: vi.fn()
             },
             harvestablesHandler: {
                 newSimpleHarvestableObject: vi.fn(),
@@ -804,8 +805,10 @@ describe('EventRouter', () => {
     // piles/timed events. See PROTOCOL18_PARAM_LAYOUTS.md and LocalTreasuresHandler.js.
     // -------------------------------------------------------------------------
     describe('onEvent LocalTreasuresUpdate', () => {
-        // @verified 2026-07-30: live capture parameter shape, forwarded as-is to the handler.
-        test('LocalTreasuresUpdate forwards Parameters to localTreasuresHandler', () => {
+        // @verified 2026-07-30: live capture parameter shape, forwarded as-is to the handler,
+        // along with mobsHandler (issue #164/#163 - lets the handler tell a SPECIAL_EVENT_* entry
+        // that duplicates a live mob apart from one that doesn't).
+        test('LocalTreasuresUpdate forwards Parameters and mobsHandler to localTreasuresHandler', () => {
             const params = {
                 0: 285, 252: EventCodes.LocalTreasuresUpdate,
                 4: [77706, 78042], 5: [40, -310, 121, -141],
@@ -815,7 +818,8 @@ describe('EventRouter', () => {
 
             EventRouter.onEvent(params);
 
-            expect(handlers.localTreasuresHandler.handleLocalTreasuresUpdate).toHaveBeenCalledWith(params);
+            expect(handlers.localTreasuresHandler.handleLocalTreasuresUpdate)
+                .toHaveBeenCalledWith(params, handlers.mobsHandler);
         });
     });
 

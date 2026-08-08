@@ -301,6 +301,14 @@ export class MobsHandler {
         }
     }
 
+    // Used by LocalTreasuresHandler to tell apart a SPECIAL_EVENT_* entry that duplicates a
+    // real mob encounter (id also tracked here) from one that doesn't (issue #164/#163 - a
+    // buried-treasure decor sharing the same wire label as a "world boss lead-up" mob event,
+    // with no matching mob id ever tracked for it).
+    hasMob(id) {
+        return this._mobsById.has(id);
+    }
+
     updateEnchantEvent(parameters) {
         const mobId = parameters[0];
         const enchantmentLevel = parameters[1];
